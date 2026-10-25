@@ -38,15 +38,12 @@ const loader=finite('installed-loader',['ldd',exe]);
 check('private prof library loaded',()=>assert.ok(loader.stdout.includes(path.join(prefix,'lib/libcjprof.so'))));
 const baselineHelp=finite('help-independent-control',[exe,'--help']);
 check('independent public help reached',()=>assert.ok(baselineHelp.stdout.includes('Usage: cjprof')));
-async function freePort(){
-  const s=net.createServer();await new Promise((resolve,reject)=>{s.once('error',reject);s.listen(port,'127.0.0.1',resolve);});
-  await new Promise((resolve,reject)=>s.close(e=>e?reject(e):resolve()));
-}
+let servingPort;
 async function request(name,wire){
   fs.writeFileSync(path.join(work,name+'.request'),wire);
   const chunks=[];let failure;
   const bytes=await new Promise((resolve,reject)=>{
-    const socket=net.createConnection({host:'127.0.0.1',port});
+    const socket=net.createConnection({host:'127.0.0.1',port:servingPort});
     socket.setTimeout(10000,()=>socket.destroy(new Error('HTTP response timeout')));
     socket.on('connect',()=>socket.write(wire));socket.on('data',b=>chunks.push(b));
     socket.on('error',e=>{failure=e;});socket.on('close',()=>failure?reject(failure):resolve(Buffer.concat(chunks)));
@@ -64,7 +61,7 @@ async function until(predicate,label,child){
 }
 let coldSnapshot;
 for(const arm of ['first','cache']){
-  await freePort();
+  servingPort=undefined;
   const argv=[exe,'heap','-i',heap,`--dump-report=${port}`],name=arm+'-server';
   const out=fs.openSync(path.join(work,name+'.stdout'),'wx'),err=fs.openSync(path.join(work,name+'.stderr'),'wx');
   const child=spawn(argv[0],argv.slice(1),{cwd:work,env,stdio:['ignore',out,err]});
@@ -74,7 +71,21 @@ for(const arm of ['first','cache']){
   }));
   const log=()=>fs.readFileSync(path.join(work,name+'.stdout'),'utf8')+fs.readFileSync(path.join(work,name+'.stderr'),'utf8');
   try{
-    await until(()=>log().includes(`http://localhost:${port}`),name+' public readiness',child);
+    // The public producer selects an available port starting at --dump-report.
+    // A separate Node bind is neither its reservation nor its reuse policy.
+    // Keep the same requested port for both processes and consume each child's
+    // actual advertised endpoint after the previous child's close has completed.
+    const endpoint=()=>log().match(/Access URL: http:\/\/localhost:(\d+)\b/);
+    await until(()=>endpoint()!==null,name+' public readiness',child);
+    servingPort=Number(endpoint()[1]);
+    fs.writeFileSync(path.join(work,name+'.endpoint.json'),JSON.stringify({
+      pid:child.pid,requestedPort:port,servingPort,
+    },null,2));
+    check(arm+' public endpoint belongs to producer selection',()=>{
+      assert.ok(Number.isInteger(servingPort)&&servingPort>=port&&servingPort<port+100&&servingPort<=65535);
+      assert.ok(!log().includes('Failed to start HTTP server'));
+      assert.equal(child.exitCode,null);assert.equal(child.signalCode,null);
+    });
     // Readiness alone is insufficient: reach routing and JSON serialization.
     const snapshot=await get(arm+'-snapshot','/api/snapshot');
     check(arm+' snapshot reaches JSON producer',()=>{
