@@ -435,7 +435,7 @@ private:
         }
 
         auto fragmentText = InsertComments(originalFragmentTokens, formattedFragmentTokens, sm, options,
-            std::make_pair(regionToFormat.startLine, regionToFormat.endLine));
+            std::make_pair(regionToFormat.startLine, regionToFormat.endLine), &formattedTextTokens);
         auto contentBefore =
             sm.GetContentBetween(originalFileAllTokens.front().Begin(), originalFragmentTokens.front().Begin());
         auto contentAfter =

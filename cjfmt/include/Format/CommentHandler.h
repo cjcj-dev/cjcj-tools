@@ -22,7 +22,8 @@ std::string FormatCommentToken(const Cangjie::Token &token, int indent);
 
 std::string InsertComments(const std::vector<Cangjie::Token> &originalTokens,
     const std::vector<Cangjie::Token> &formattedTokens, Cangjie::SourceManager &sm,
-    const FormattingOptions &options, std::optional<std::pair<int, int>> selectedLines = std::nullopt);
+    const FormattingOptions &options, std::optional<std::pair<int, int>> selectedLines = std::nullopt,
+    const std::vector<Cangjie::Token> *formattedContext = nullptr);
 
 } // namespace Cangjie::Format
 

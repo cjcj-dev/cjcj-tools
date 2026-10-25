@@ -84,9 +84,10 @@ class CommentHandler : private SimultaneousIterator {
 public:
     // Formatting options are loaded per invocation, so the configured width must not be cached in a global value.
     CommentHandler(const std::vector<Token> &originalTokens, const std::vector<Token> &outputTokens, SourceManager &sm,
-        int indentWidth, std::optional<std::pair<int, int>> selectedLines)
+        int indentWidth, std::optional<std::pair<int, int>> selectedLines,
+        const std::vector<Token> *formattedContext)
         : SimultaneousIterator(originalTokens, outputTokens), sm(sm), indentWidth(indentWidth),
-          selectedLines(selectedLines)
+          selectedLines(selectedLines), formattedContext(formattedContext)
     {
         this->outputText = "";
     }
@@ -145,6 +146,7 @@ private:
     SourceManager &sm;
     int indentWidth;
     std::optional<std::pair<int, int>> selectedLines;
+    const std::vector<Token> *formattedContext;
     std::string outputText;
 
     void Insert(char character, int times)
@@ -180,14 +182,15 @@ private:
         }
     }
 
-    std::vector<Token>::const_iterator FindFirstTokenOnThisLine(std::vector<Token>::const_iterator token)
+    std::vector<Token>::const_iterator FindFirstTokenOnThisLine(std::vector<Token>::const_iterator token,
+        const std::vector<Token> &tokens)
     {
-        if (token == outputTokens.begin()) {
+        if (token == tokens.begin()) {
             return token;
         }
         for (;;) {
             auto prev = std::prev(token);
-            if (prev == outputTokens.begin()) {
+            if (prev == tokens.begin()) {
                 return prev;
             }
             if (prev->kind == TokenKind::NL) {
@@ -207,10 +210,29 @@ private:
      */
     int ComputeIndentFor(const std::vector<Token>::const_iterator tokenToIndent, bool isComment)
     {
-        if (tokenToIndent == outputTokens.end()) {
+        // A regional fragment can end after a comment but before its following
+        // code token. Keep that token's formatting context for indentation only;
+        // it must not become part of the fragment's output.
+        if (isComment && tokenToIndent == outputTokens.end() && formattedContext && !outputTokens.empty()) {
+            auto next = formattedContext->begin();
+            const auto end = outputTokens.back().End();
+            while (next != formattedContext->end() &&
+                (next->Begin() < end || next->kind == TokenKind::NL ||
+                 next->kind == TokenKind::COMMENT || next->kind == TokenKind::SEMI)) {
+                ++next;
+            }
+            return ComputeIndentFor(next, true, *formattedContext);
+        }
+        return ComputeIndentFor(tokenToIndent, isComment, outputTokens);
+    }
+
+    int ComputeIndentFor(const std::vector<Token>::const_iterator tokenToIndent, bool isComment,
+        const std::vector<Token> &tokens)
+    {
+        if (tokenToIndent == tokens.end()) {
             return 0;
         }
-        auto firstOnThisLine = FindFirstTokenOnThisLine(tokenToIndent);
+        auto firstOnThisLine = FindFirstTokenOnThisLine(tokenToIndent, tokens);
         auto sameIndent = (firstOnThisLine->Begin().column - 1);
         auto oneLevelIndented = sameIndent + indentWidth;
 
@@ -219,7 +241,7 @@ private:
         }
 
         auto isFirstOnThisLine = tokenToIndent == firstOnThisLine;
-        auto isLastOnThisLine = std::next(tokenToIndent) == outputTokens.end() ||
+        auto isLastOnThisLine = std::next(tokenToIndent) == tokens.end() ||
             std::next(tokenToIndent)->kind == TokenKind::NL;
 
         auto isLastClosingBrace = isLastOnThisLine && IsClosing(*tokenToIndent);
@@ -370,9 +392,11 @@ std::string FormatCommentToken(const Token &token, int indent)
 }
 
 std::string InsertComments(const std::vector<Token> &originalTokens, const std::vector<Token> &formattedTokens,
-    SourceManager &sm, const FormattingOptions &options, std::optional<std::pair<int, int>> selectedLines)
+    SourceManager &sm, const FormattingOptions &options, std::optional<std::pair<int, int>> selectedLines,
+    const std::vector<Token> *formattedContext)
 {
-    auto commentHandler = CommentHandler(originalTokens, formattedTokens, sm, options.indentWidth, selectedLines);
+    auto commentHandler = CommentHandler(originalTokens, formattedTokens, sm, options.indentWidth, selectedLines,
+        formattedContext);
     return commentHandler.DoInsert();
 }
 } // namespace Cangjie::Format
