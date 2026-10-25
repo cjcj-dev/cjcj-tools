@@ -19,7 +19,12 @@ if(privateSdk!==null){
  assert.equal(fs.realpathSync(exe),exe,'public cjpm entry must not alias another SDK');
  assert(fs.lstatSync(exe+'.entry').isFile(),'installed cjpm launcher recipe required');
  assert.equal(path.resolve(process.env.CANGJIE_HOME??''),privateSdk,'compiler must belong to the selected SDK');
- assert(fs.lstatSync(path.join(privateSdk,'bin/cjc')).isFile(),'private compiler entry must be a regular file');
+ const compiler=path.join(privateSdk,'bin/cjc'),kind=fs.lstatSync(compiler);
+ assert(kind.isFile()||kind.isSymbolicLink(),'private compiler entry must be a file or SDK-internal link');
+ const inside=target=>{const relative=path.relative(privateSdk,target);return relative!==''&&relative!=='..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative);};
+ if(kind.isSymbolicLink())assert(inside(path.resolve(path.dirname(compiler),fs.readlinkSync(compiler))),'compiler link must stay inside the private SDK');
+ assert(inside(fs.realpathSync(compiler)),'compiler target must stay inside the private SDK');
+ assert(fs.statSync(compiler).isFile(),'compiler link must resolve to a regular file');
 }
 assert(!fs.existsSync(out)||fs.readdirSync(out).length===0,'use a new empty output directory');
 fs.mkdirSync(out, {recursive:true});
@@ -97,6 +102,7 @@ testcase('preserved-mtime',()=>{
 // Component tests inject through PATH. Installed tests temporarily replace the
 // actual private SDK/bin/cjc entry, preserving the original beside it so both a
 // plain compiler and a recipe-based launcher retain their relative SDK layout.
+// An internal symlink is moved as a link; its target and recipe stay untouched.
 // All ordinary calls still delegate to that entry, never to .target-tools bodies.
 // The launch arm breaks only the shim interpreter after a successful scan.
 function shim(p,mode) {
@@ -104,17 +110,26 @@ function shim(p,mode) {
  const log=dir+'/calls.jsonl',real=path.join(process.env.CANGJIE_HOME,'bin','cjc');
  const file=privateSdk===null?dir+'/cjc':real;
  const delegate=privateSdk===null?real:real+'.cjpm-regression-'+process.pid+'-'+mode;
- const recipe=real+'.entry',savedRecipe=delegate+'.entry';
+ const original=privateSdk===null?null:fs.lstatSync(real,{bigint:true});
+ const originalLink=original?.isSymbolicLink()?fs.readlinkSync(real):null;
+ const target=originalLink===null?real:fs.realpathSync(real);
+ const targetBefore=originalLink===null?null:fs.statSync(target,{bigint:true});
+ const recipe=target+'.entry',savedRecipe=delegate+'.entry';
  const fallbackPath=process.env.PATH.split(path.delimiter).filter(entry=>path.resolve(entry)!==path.dirname(real)).join(path.delimiter);
- const original=privateSdk===null?null:fs.statSync(real,{bigint:true});
  const recipeBytes=privateSdk!==null&&fs.existsSync(recipe)?fs.readFileSync(recipe):null;
  let moved=false,copiedRecipe=false;
  function restore(){
   if(moved){fs.rmSync(file,{force:true});fs.renameSync(delegate,real);moved=false;}
   if(copiedRecipe){fs.unlinkSync(savedRecipe);copiedRecipe=false;}
   if(original!==null)check(mode+'-private-compiler-entry-restored',()=>{
-   const restored=fs.statSync(real,{bigint:true});
+   const restored=fs.lstatSync(real,{bigint:true});
    for(const key of ['dev','ino','mode','size','mtimeNs'])assert.equal(restored[key],original[key]);
+   if(originalLink!==null){
+    assert.equal(fs.readlinkSync(real),originalLink);
+    assert.equal(fs.realpathSync(real),target);
+    const targetAfter=fs.statSync(target,{bigint:true});
+    for(const key of ['dev','ino','mode','size','mtimeNs'])assert.equal(targetAfter[key],targetBefore[key]);
+   }
    if(recipeBytes!==null)assert.deepEqual(fs.readFileSync(recipe),recipeBytes);
    else assert(!fs.existsSync(recipe));
    assert(!fs.existsSync(delegate)&&!fs.existsSync(savedRecipe));
@@ -133,7 +148,7 @@ function shim(p,mode) {
  try{
   if(privateSdk!==null){
    assert(!fs.existsSync(delegate)&&!fs.existsSync(savedRecipe),'preserve any earlier interrupted injection');
-   if(recipeBytes!==null){fs.copyFileSync(recipe,savedRecipe,fs.constants.COPYFILE_EXCL);copiedRecipe=true;}
+   if(recipeBytes!==null&&originalLink===null){fs.copyFileSync(recipe,savedRecipe,fs.constants.COPYFILE_EXCL);copiedRecipe=true;}
    fs.renameSync(real,delegate);moved=true;
   }
   fs.writeFileSync(file,text,{mode:0o755,flag:'wx'});
