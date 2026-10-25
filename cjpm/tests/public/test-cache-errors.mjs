@@ -8,6 +8,19 @@ import {spawnSync} from 'node:child_process';
 const [exeArg, outArg, phase = 'candidate'] = process.argv.slice(2);
 assert(exeArg && outArg);
 const exe=path.resolve(exeArg),out=path.resolve(outArg);
+// Explicit opt-in: the caller owns this private SDK exclusively for the test.
+// Its public cjpm launcher deliberately prefers SDK/bin over an inherited PATH.
+const privateSdkArg=process.env.CJPM_REGRESSION_PRIVATE_SDK;
+const privateSdk=privateSdkArg===undefined?null:path.resolve(privateSdkArg);
+if(privateSdk!==null){
+ assert(path.isAbsolute(privateSdkArg),'private SDK must be absolute');
+ assert.equal(fs.realpathSync(privateSdk),privateSdk,'private SDK must not alias another root');
+ assert.equal(exe,path.join(privateSdk,'tools/bin/cjpm'),'use the private SDK public cjpm entry');
+ assert.equal(fs.realpathSync(exe),exe,'public cjpm entry must not alias another SDK');
+ assert(fs.lstatSync(exe+'.entry').isFile(),'installed cjpm launcher recipe required');
+ assert.equal(path.resolve(process.env.CANGJIE_HOME??''),privateSdk,'compiler must belong to the selected SDK');
+ assert(fs.lstatSync(path.join(privateSdk,'bin/cjc')).isFile(),'private compiler entry must be a regular file');
+}
 assert(!fs.existsSync(out)||fs.readdirSync(out).length===0,'use a new empty output directory');
 fs.mkdirSync(out, {recursive:true});
 const commands=[], checks=[], failures=[],completed=[];
@@ -81,25 +94,55 @@ testcase('preserved-mtime',()=>{
  check('mtime-restored-value',()=>assert.equal(fs.readFileSync(p+'/observed','utf8'),'7'));
 });
 
-// A private PATH entry delegates every ordinary compiler call. The launch arm
-// changes only its own interpreter after a successful dependency scan, so the
-// next compiler process cannot start (not an invented compiler exit code).
+// Component tests inject through PATH. Installed tests temporarily replace the
+// actual private SDK/bin/cjc entry, preserving the original beside it so both a
+// plain compiler and a recipe-based launcher retain their relative SDK layout.
+// All ordinary calls still delegate to that entry, never to .target-tools bodies.
+// The launch arm breaks only the shim interpreter after a successful scan.
 function shim(p,mode) {
  const dir=p+'/compiler-entry';fs.mkdirSync(dir);
- const file=dir+'/cjc',log=dir+'/calls.jsonl',real=path.join(process.env.CANGJIE_HOME,'bin','cjc');
+ const log=dir+'/calls.jsonl',real=path.join(process.env.CANGJIE_HOME,'bin','cjc');
+ const file=privateSdk===null?dir+'/cjc':real;
+ const delegate=privateSdk===null?real:real+'.cjpm-regression-'+process.pid+'-'+mode;
+ const recipe=real+'.entry',savedRecipe=delegate+'.entry';
+ const fallbackPath=process.env.PATH.split(path.delimiter).filter(entry=>path.resolve(entry)!==path.dirname(real)).join(path.delimiter);
+ const original=privateSdk===null?null:fs.statSync(real,{bigint:true});
+ const recipeBytes=privateSdk!==null&&fs.existsSync(recipe)?fs.readFileSync(recipe):null;
+ let moved=false,copiedRecipe=false;
+ function restore(){
+  if(moved){fs.rmSync(file,{force:true});fs.renameSync(delegate,real);moved=false;}
+  if(copiedRecipe){fs.unlinkSync(savedRecipe);copiedRecipe=false;}
+  if(original!==null)check(mode+'-private-compiler-entry-restored',()=>{
+   const restored=fs.statSync(real,{bigint:true});
+   for(const key of ['dev','ino','mode','size','mtimeNs'])assert.equal(restored[key],original[key]);
+   if(recipeBytes!==null)assert.deepEqual(fs.readFileSync(recipe),recipeBytes);
+   else assert(!fs.existsSync(recipe));
+   assert(!fs.existsSync(delegate)&&!fs.existsSync(savedRecipe));
+  });
+ }
  const text='#!'+process.execPath+'\n'+
  'const fs=require("node:fs"),{spawnSync}=require("node:child_process");\n'+
  'const args=process.argv.slice(2),log='+JSON.stringify(log)+';\n'+
  'fs.appendFileSync(log,JSON.stringify({args,event:"invoke"})+"\\n");\n'+
  (mode==='dummy'?'if(args.some(a=>a.includes("._cachecase_test.cj"))){fs.appendFileSync(log,JSON.stringify({event:"dummy-failed",rc:73})+"\\n");process.exit(73);}\n':'')+
  (mode==='runner'?'if(args.some(a=>a.endsWith("/testrunner.cj"))){fs.appendFileSync(log,JSON.stringify({event:"runner-failed",rc:73})+"\\n");process.exit(73);}\n':'')+
- 'const p=spawnSync('+JSON.stringify(real)+',args,{stdio:"inherit",env:{...process.env,PATH:'+JSON.stringify(process.env.PATH)+'}});\n'+
+ 'const p=spawnSync('+JSON.stringify(delegate)+',args,{argv0:'+JSON.stringify(real)+',stdio:"inherit",env:{...process.env,PATH:'+JSON.stringify(process.env.PATH)+'}});\n'+
  'fs.appendFileSync(log,JSON.stringify({event:"delegate",args,rc:p.status,signal:p.signal})+"\\n");\n'+
  (mode==='launch'?'if(args.includes("--scan-dependency")&&p.status===0){fs.writeFileSync(__filename,"#!/nonexistent-cjpm-regression-interpreter\\n");fs.appendFileSync(log,JSON.stringify({event:"launch-disabled-after-scan"})+"\\n");}\n':'')+
  'process.exit(p.status??1);\n';
- fs.writeFileSync(file,text,{mode:0o755});
- const fallbackPath=process.env.PATH.split(path.delimiter).filter(entry=>path.resolve(entry)!==path.dirname(real)).join(path.delimiter);
- return {env:{...process.env,PATH:dir+path.delimiter+fallbackPath},log};
+ try{
+  if(privateSdk!==null){
+   assert(!fs.existsSync(delegate)&&!fs.existsSync(savedRecipe),'preserve any earlier interrupted injection');
+   if(recipeBytes!==null){fs.copyFileSync(recipe,savedRecipe,fs.constants.COPYFILE_EXCL);copiedRecipe=true;}
+   fs.renameSync(real,delegate);moved=true;
+  }
+  fs.writeFileSync(file,text,{mode:0o755,flag:'wx'});
+ }catch(error){restore();throw error;}
+ return {env:privateSdk===null?{...process.env,PATH:dir+path.delimiter+fallbackPath}:process.env,log,restore};
+}
+function withCompilerShim(p,mode,body){
+ const injected=shim(p,mode);
+ try{return body(injected);}finally{injected.restore();}
 }
 
 testcase('compiler-launch',()=>{
@@ -109,9 +152,11 @@ testcase('compiler-launch',()=>{
  fs.writeFileSync(source,production.replace('package cachecase\n','package cachecase\nimport std.math.*\n').replace('{ 7 }','{ 8 }'));
  fs.utimesSync(source,stamp.atime,new Date(stamp.mtimeMs+2000));
  const cache=p+'/target/release/incremental-cache.json',before=fs.readFileSync(cache);
- const injected=shim(p,'launch');
- const failure=run('launch-failure',p,['build','-i','-V','-j','2'],injected.env);
- const calls=fs.readFileSync(injected.log,'utf8').trim().split('\n').map(JSON.parse);
+ const {failure,calls}=withCompilerShim(p,'launch',injected=>{
+  const failure=run('launch-failure',p,['build','-i','-V','-j','2'],injected.env);
+  const calls=fs.readFileSync(injected.log,'utf8').trim().split('\n').map(JSON.parse);
+  return {failure,calls};
+ });
  check('launch-reached-successful-scan',()=>assert(calls.some(x=>x.event==='launch-disabled-after-scan')));
  check('launch-no-compiler-after-disabled',()=>assert.equal(calls.at(-1).event,'launch-disabled-after-scan'));
  check('launch-reached-compiler-exception',()=>assert((failure.stderr||'').includes('failed to compile package `cachecase` with exception occurred')));
@@ -126,9 +171,11 @@ testcase('dummy-failure',()=>{
  const p=project('dummy',{'lib.cj':source,'control/lib.cj':control,'control/lib_test.cj':controlTest});
  ok('dummy-prime',p,['test','--no-run','-V','-j','2']);
  const cache=p+'/target/release/unittest_bin/incremental-cache.json',before=fs.readFileSync(cache);
- const injected=shim(p,'dummy');
- const failure=run('dummy-failure',p,['test','--no-run','-V','-j','2'],injected.env);
- const calls=fs.readFileSync(injected.log,'utf8').trim().split('\n').map(JSON.parse);
+ const {failure,calls}=withCompilerShim(p,'dummy',injected=>{
+  const failure=run('dummy-failure',p,['test','--no-run','-V','-j','2'],injected.env);
+  const calls=fs.readFileSync(injected.log,'utf8').trim().split('\n').map(JSON.parse);
+  return {failure,calls};
+ });
  check('dummy-exact-compiler-failure-reached',()=>assert(calls.some(x=>x.event==='dummy-failed'&&x.rc===73)));
  check('dummy-independent-control-compiles',()=>assert(calls.some(x=>x.event==='delegate'&&x.rc===0&&x.args.includes('--test-only')&&x.args.includes(p+'/src/control'))));
  fs.copyFileSync(cache,out+'/dummy-after-cache.json');fs.writeFileSync(out+'/dummy-before-cache.json',before);
@@ -142,9 +189,11 @@ testcase('empty-runner-failure',()=>{
  fs.mkdirSync(p+'/src/unselected');
  const args=['test','--no-run','-V','-j','2','src/unselected'];
  ok('empty-runner-prime',p,args);
- const injected=shim(p,'runner');
- const failure=run('empty-runner-failure',p,args,injected.env);
- const calls=fs.readFileSync(injected.log,'utf8').trim().split('\n').map(JSON.parse);
+ const {failure,calls}=withCompilerShim(p,'runner',injected=>{
+  const failure=run('empty-runner-failure',p,args,injected.env);
+  const calls=fs.readFileSync(injected.log,'utf8').trim().split('\n').map(JSON.parse);
+  return {failure,calls};
+ });
  check('empty-runner-target-reached',()=>assert(calls.some(x=>x.event==='runner-failed'&&x.rc===73)));
  check('empty-runner-failure-propagated',()=>assertExit(failure,1));
  ok('empty-runner-restored',p,args);
