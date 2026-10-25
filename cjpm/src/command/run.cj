@@ -10,6 +10,10 @@ import std.collection.*
 import cjpm.implement.*
 import cjpm.config.*
 
+let RUN_SHORT_OPTION: String = "gV"
+let RUN_LONG_OPTION: Array<String> = ["verbose", "skip-build", "name=", "build-args=", "run-args=", "target-dir=",
+    "skip-script", "enable-features=", "no-feature-deduce"]
+
 class RunCommand <: Handle {
     private let RUN_USAGE: String = """
 Compile and run an executable product.
@@ -35,6 +39,8 @@ Available options:
     init(args: Array<String>) {
         this.cmdName = args[0]
         this.arguments = args[1..] // remove run itself
+        this.shortOptionSpec = RUN_SHORT_OPTION
+        this.longOptionSpecs = RUN_LONG_OPTION
     }
 
     public override func printPass(): Unit {
@@ -103,8 +109,7 @@ Available options:
                 afterRunArgs.add(nowArg)
             }
         }
-        var standardArgs: Array<String> = ["verbose", "skip-build", "name=", "build-args=", "run-args=", "target-dir=", "skip-script", "enable-features=", "no-feature-deduce"]
-        let (argMap, unparseArgs) = getParseOption(beforeRunArgs.toArray() , "gV", standardArgs)
+        let (argMap, unparseArgs) = getParseOption(beforeRunArgs.toArray(), RUN_SHORT_OPTION, RUN_LONG_OPTION)
 
         if (!handleUnparseArgs(unparseArgs)) {
             return false

@@ -56,18 +56,24 @@ public struct KeyInfo {
 }
 
 public func parse(data: String): Parser {
-    var buf = data.toArray()
+    // Preserve the public string API while keeping the parser implementation byte based.
+    return parse(data.toArray())
+}
 
-    // exclude utf-8 bom
-    if (buf[0..3] == [0xEF, 0xBB, 0xBF]) {
-        buf = buf[3..]
+public func parse(data: Array<Byte>): Parser {
+    // Parse the original byte array in place so large inputs are not duplicated as Strings.
+    var contentOffset: Int64 = 0
+
+    // Keep the BOM in the backing array and skip it through the lexer offset.
+    if (data.size >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF) {
+        contentOffset = 3
     }
-    match (buf.indexOf(0)) {
-        case None => ()
-        case Some(idx) => throw Exception(
-            "files cannot contain NULL bytes; probably using UTF-16; TOML files must be UTF-8")
+    for (i in contentOffset..data.size) {
+        if (data[i] == 0) {
+            throw Exception("files cannot contain NULL bytes; probably using UTF-16; TOML files must be UTF-8")
+        }
     }
-    let lex = Lexer(buf)
+    let lex = Lexer(data, contentOffset)
     let p = Parser(lex)
     while (true) {
         let item = p.next()
@@ -225,13 +231,25 @@ public class Parser {
                 let (v, t) = valueDatetime(it)
                 match {
                     case t.toString() == TOML_LOCAL_TIME.toString() =>
-                        let lt = LocalTime(v.hour, v.minute, v.second, nanosecond: v.nanosecond)
+                        let lt = LocalTime(
+                            v.hour,
+                            v.minute,
+                            v.second,
+                            nanosecond: v.nanosecond,
+                            precision: fractionalSecondPrecision(it.val)
+                        )
                         return (TomlLocalTime(lt), t)
                     case t.toString() == TOML_LOCAL_DATE.toString() =>
                         let ld = LocalDate(v.year, v.month, v.dayOfMonth)
                         return (TomlLocalDate(ld), t)
                     case t.toString() == TOML_LOCAL_DATETIME.toString() =>
-                        let lt = LocalTime(v.hour, v.minute, v.second, nanosecond: v.nanosecond)
+                        let lt = LocalTime(
+                            v.hour,
+                            v.minute,
+                            v.second,
+                            nanosecond: v.nanosecond,
+                            precision: fractionalSecondPrecision(it.val)
+                        )
                         let ld = LocalDate(v.year, v.month, v.dayOfMonth)
                         let ldt = LocalDatetime(ld, lt)
                         return (TomlLocalDatetime(ldt), t)
@@ -694,6 +712,13 @@ public class Parser {
             case _ => throw ParseException("Cannot infer primitive type of lex item '${it.typ}'.")
         }
     }
+}
+
+func fractionalSecondPrecision(value: String): Int64 {
+    if (let Some(dot) <- value.indexOf(UInt8(UInt32(r'.')))) {
+        return Int64(value.size - dot - 1)
+    }
+    return 0
 }
 
 func numHasLeadingZero(s: String): Bool {

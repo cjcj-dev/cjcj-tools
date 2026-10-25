@@ -41,17 +41,15 @@ def positive_jobs(value):
     return jobs
 
 
-def default_jobs():
-    value = os.environ.get("CANGJIE_BUILD_JOBS")
-    if value is not None:
-        return positive_jobs(value)
+def available_jobs():
     try:
         return max(1, len(os.sched_getaffinity(0)))
     except (AttributeError, OSError):
         return os.cpu_count() or 1
 
 
-# Native dependencies and CJ packages run sequentially, sharing one budget.
+# Build libfswatcher. Native and Cangjie phases run sequentially and share
+# the caller's allocation; neither phase multiplies the producer budget.
 def build_fswatcher(cmake_option="", make_prefix="", jobs=1):
     if os.path.exists(CPP_OUT_DIR):
         shutil.rmtree(CPP_OUT_DIR)
@@ -83,6 +81,7 @@ def build_fswatcher(cmake_option="", make_prefix="", jobs=1):
 
 # Build cjpm
 def build(build_type, target, rpath=None, native_only=False, jobs=1):
+    jobs = min(positive_jobs(jobs), available_jobs())
     if not build_type:
         build_type = ""
     if not target:
@@ -274,12 +273,13 @@ def main():
     build_parser.add_argument('-t', '--build-type', type=str, dest='build_type', help='Specify build type', required=True)
     build_parser.add_argument('--target', type=str, dest='target', help='Specify build target')
     build_parser.add_argument('--set-rpath', type=str, dest='rpath', help='Set rpath value')
-    build_parser.add_argument('-j', '--jobs', type=positive_jobs,
-                              help='Native/CJ build budget (default: CANGJIE_BUILD_JOBS or available CPUs)')
     build_parser.add_argument('--native-only',
                              action='store_true',
                              dest='native_only',
                              help='Only build native code')
+
+    build_parser.add_argument('-j', '--jobs', type=positive_jobs,
+                              help='Shared native/Cangjie CPU budget (default: CANGJIE_BUILD_JOBS or available CPUs)')
 
     # Install command
     install_parser = subparsers.add_parser('install', help='Install cjpm')
@@ -292,7 +292,8 @@ def main():
 
     if args.command == 'build':
         try:
-            jobs = args.jobs if args.jobs is not None else default_jobs()
+            jobs = args.jobs if args.jobs is not None else positive_jobs(
+                os.environ.get('CANGJIE_BUILD_JOBS', available_jobs()))
         except argparse.ArgumentTypeError as error:
             parser.error(str(error))
         return build(build_type=args.build_type, target=args.target, rpath=args.rpath, native_only=args.native_only, jobs=jobs)

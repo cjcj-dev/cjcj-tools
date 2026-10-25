@@ -14,6 +14,7 @@ import cjpm.config.*
 
 let BUILD_LONG_OPTION: Array<String> = ["verbose", "coverage", "output=", "target=", "enable-features=",
     "no-feature-deduce", "incremental", "target-dir=", "jobs=", "lint", "mock", "member=", "skip-script"]
+let BUILD_SHORT_OPTION: String = "Vo:gij:lm:"
 let BUILD_USAGE: String = """
 Compile a local module and all of its dependencies.
 
@@ -44,11 +45,11 @@ let EXAMPLE_OUTPUT_NAME = "main"
 
 // BuildCommand represents the build command
 class BuildCommand <: Handle {
-    private let BUILD_SHORT_OPTION: String = "Vo:gij:lm:"
-
     init(args: Array<String>) {
         this.cmdName = args[0]
         this.arguments = args[1..] // remove build itself
+        this.shortOptionSpec = BUILD_SHORT_OPTION
+        this.longOptionSpecs = BUILD_LONG_OPTION
     }
 
     public override func printHelp(): Unit {
@@ -123,7 +124,7 @@ class BuildCommand <: Handle {
             let buildConfig = BuildConfig()
             buildConfig.globalConfig.resolveType = RESOLVE_BUILD
             buildConfig.globalConfig.isPureBuild = true
-            return doBuild(buildConfig)
+            return doTopLevelBuild(buildConfig)
         }
 
         let (argMap, unparseArgs) = getParseOption(this.arguments, BUILD_SHORT_OPTION, BUILD_LONG_OPTION)
@@ -172,7 +173,7 @@ class BuildCommand <: Handle {
         buildConfig.globalConfig.resolveType = RESOLVE_BUILD
         buildConfig.globalConfig.isPureBuild = true
 
-        return doBuild(buildConfig)
+        return doTopLevelBuild(buildConfig)
     }
 }
 

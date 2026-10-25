@@ -17,8 +17,23 @@ public func runScript(scriptConfig: ScriptConfig, step: BuildScriptStep, command
         return true
     }
 
-    if (step == Pre && !scriptConfig.isRelocated && !buildScriptExe(scriptConfig)) {
-        return false
+    if (step == Pre) {
+        // A backup left by another process is disk state, not proof that this
+        // process has resolved its metadata or registered source restoration.
+        let interrupted = scriptConfig.isRelocated && !RELOCATED_SCRIPT_MAP.contains(scriptConfig.scriptPath)
+        if (interrupted) {
+            try {
+                rename(scriptConfig.scriptPath + ".bak", to: scriptConfig.scriptPath, overwrite: false)
+                scriptConfig.isRelocated = false
+            } catch (e: Exception) {
+                eprintln("${e.message}\nError: failed to restore interrupted build script ${scriptConfig.scriptPath}")
+                return false
+            }
+        }
+        if (!scriptConfig.isRelocated &&
+            !buildScriptExe(scriptConfig, updateLocks: command == "update", forceRebuild: interrupted)) {
+            return false
+        }
     }
 
     let commandArg = "${step}-${command}"
@@ -169,10 +184,13 @@ public func runMultiScriptPost(globalConfig: GlobalConfig): Bool {
     return true
 }
 
+// Merge script metadata at normal resolution or the successful command's final write.
+let resolvedScriptDeps = HashMap<String, HashMap<String, DepInfo>>()
+
 func getDepPath(modulePath: String, depName: String, depInfo: DepInfo): Option<String> {
     if (let Some(depPath) <- depInfo.path) {
         return getPath(modulePath, depPath)
-    } else if (let Some(version) <- depInfo.version) {
+    } else if (depInfo.isCenterRepoDep() && let Some(version) <- depInfo.version) {
         return "${modulePath}${SCRIPT_DEPENDENCIES_MARK}${depName}-${version}"
     } else {
         return if (let Some((path, commit, _)) <- downloadGitDep(depName, depInfo)) {
@@ -185,16 +203,26 @@ func getDepPath(modulePath: String, depName: String, depInfo: DepInfo): Option<S
     }
 }
 
-func getScriptDeps(scriptConfig: ScriptConfig): HashMap<String, DepInfo> {
+func getScriptDeps(scriptConfig: ScriptConfig, updateLocks: Bool): ?HashMap<String, DepInfo> {
     let deps = scriptConfig.scriptDep
     let (loadFlag, lockFile) = loadLockFile(scriptConfig.modulePath)
     if (!loadFlag) {
-        return deps
+        return None
     }
+    if (updateLocks) { return deps }
 
     for ((depName, depInfo) in lockFile.scripts) {
         if (deps.contains(depName)) {
-            deps.add(depName, depInfo)
+            if (depInfo.isGitDep()) {
+                let (_, error) = depInfo.isAlternative(deps[depName])
+                if (!error.isEmpty()) {
+                    eprintln("Error: locked script dependency '${depName}' changed")
+                    return None
+                }
+                deps.add(depName, depInfo)
+            }
+            // Registry requirements remain declarations. The nested resolver
+            // applies the original lock metadata without hiding a changed range.
         }
     }
     return deps
@@ -202,36 +230,75 @@ func getScriptDeps(scriptConfig: ScriptConfig): HashMap<String, DepInfo> {
 
 func writeScriptLock(rootPath: String, scriptDeps: HashMap<String, DepInfo>): Bool {
     if (scriptDeps.isEmpty()) {
+        resolvedScriptDeps[getCanonicalPath(rootPath)] = HashMap<String, DepInfo>()
         return true
     }
 
-    let (loadFlag, lockFile) = loadLockFile(rootPath)
-    if (!loadFlag) {
-        return false
-    }
-
-    scriptDeps.removeIf {_, v => v.path.isSome()}
-    var lockFilePath: String = Path(rootPath).join(LOCK_FILE_NAME).toString()
-    // Overwrite file only if we have meaningful changes in case field serialization order got changed
-    if (lockFile.scripts != scriptDeps || !fileExists(lockFilePath)) {
-        if (!lockFile.scripts.isEmpty() && !deleteFile(lockFilePath)) {
-            return false
-        }
-
-        if (!creatLockFile(rootPath, ModuleLock(lockFile.requires, scriptDeps))) {
-            return false
+    let deps = resolvedScriptDeps[getCanonicalPath(rootPath)]
+    for ((name, dep) in scriptDeps) {
+        if (dep.isGitDep()) {
+            let resolved = deps[name]
+            dep.version = resolved.version
+            dep.dependencies = resolved.dependencies
+            dep.source = gitLockSource(dep)
+            deps[name] = dep
         }
     }
+    deps.removeIf {_, v => v.path.isSome()}
 
     return true
 }
 
-func buildScriptExe(scriptConfig: ScriptConfig): Bool {
+// Persist every script producer at the same module path getScriptDeps reads.
+// Never commit from the nested script build. Pre-serialize all entries before
+// changing any lock, preserving each module's own ordinary dependencies.
+func writeResolvedLocks(rootPath: String, rootLock: ModuleLock): Bool {
+    let locks = HashMap<String, ModuleLock>()
+    locks[getCanonicalPath(rootPath)] = rootLock
+    return writeResolvedLocks(locks)
+}
+
+// Commands such as run --skip-build and clean can produce scripts without
+// ordinary resolution. All successful top-level commands share this outlet.
+public func finishCommandLocks(): Bool {
+    if (resolvedScriptDeps.isEmpty()) { return true }
+    return writeResolvedLocks(HashMap<String, ModuleLock>())
+}
+
+func writeResolvedLocks(locks: HashMap<String, ModuleLock>): Bool {
+    for ((modulePath, scripts) in resolvedScriptDeps) {
+        let lock = if (locks.contains(modulePath)) {
+            locks[modulePath]
+        } else {
+            let (ok, existing) = loadLockFile(modulePath)
+            if (!ok) { return false }
+            existing
+        }
+        lock.scripts = scripts
+        locks[modulePath] = lock
+    }
+    try {
+        for ((_, lock) in locks) {
+            let _ = lock.serialize()
+        }
+    } catch (e: Exception) {
+        eprintln("Error: ${e.message}")
+        return false
+    }
+    for ((modulePath, lock) in locks) {
+        if (!creatLockFile(modulePath, lock)) { return false }
+    }
+    resolvedScriptDeps.clear()
+    return true
+}
+
+func buildScriptExe(scriptConfig: ScriptConfig, updateLocks!: Bool = false, forceRebuild!: Bool = false): Bool {
     let crossCompileBackup: String = crossCompileTarget
     crossCompileTarget = ""
 
     let buildConfig = BuildConfig()
-    let scriptDeps = getScriptDeps(scriptConfig)
+    buildConfig.isRebuild = updateLocks || forceRebuild
+    let scriptDeps = getScriptDeps(scriptConfig, updateLocks) ?? return false
     if (!scriptDeps.isEmpty()) {
         var depPathList: ArrayList<String> = ArrayList<String>()
         for ((depName, depInfo) in scriptDeps) {
@@ -240,14 +307,18 @@ func buildScriptExe(scriptConfig: ScriptConfig): Bool {
         }
 
         buildConfig.isVerbose = scriptConfig.isVerbose
-        buildConfig.isIncremental = true
+        // Explicit update can replace the same registry name/version while an
+        // archive preserves source timestamps. Rebuild its dependency graph,
+        // not just the script executable, before consuming the refreshed code.
+        buildConfig.isIncremental = !updateLocks
         buildConfig.isDebug = scriptConfig.isDebug
         buildConfig.targetDir = Path(scriptConfig.scriptTargetDir).join("libs").toString()
 
         buildConfig.globalConfig.isVerbose = buildConfig.isVerbose
-        buildConfig.globalConfig.isIncremental = true
+        buildConfig.globalConfig.isIncremental = buildConfig.isIncremental
         buildConfig.globalConfig.rootPath = scriptConfig.modulePath
         buildConfig.globalConfig.resolveType = RESOLVE_BUILD
+        buildConfig.globalConfig.updateScriptLocks = updateLocks
 
         let tomlInfo: TomlInfo = TomlInfo()
         tomlInfo.isWorkSpaceConfig = true

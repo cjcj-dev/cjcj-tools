@@ -19,13 +19,10 @@ var UPDATE_DEPOT = Depot()
 
 // Command update implement.
 public func doUpdate(): Bool {
-    // first fo all, force-update all index
-    if (!updateIndex()) {
-        return false
-    }
-
+    // main prepares the index before resolving either scripts or ordinary dependencies.
     // initialize dep-analysis engine
     UPDATE_ANALYSIS_ENGINE.isTest = true
+    UPDATE_ANALYSIS_ENGINE.refreshCache = true
     UPDATE_ANALYSIS_ENGINE.rootModulePath = getCanonicalPath(DIR_CURRENT)
 
     var tomlInfo: TomlInfo = loadModuleFile(DIR_CURRENT) ?? return false
@@ -35,10 +32,6 @@ public func doUpdate(): Bool {
 
     let (loadFlag, lockFile) = loadLockFile(DIR_CURRENT)
     if (!loadFlag) {
-        return false
-    }
-
-    if (!deleteFile(LOCK_FILE_NAME)) {
         return false
     }
 
@@ -84,7 +77,8 @@ public func doUpdate(): Bool {
     let depMap = UPDATE_ANALYSIS_ENGINE.getDepMap()
     depMap.removeIf {_, v => v.path.isSome()}
 
-    return creatLockFile(DIR_CURRENT, ModuleLock(depMap, lockFile.scripts))
+    lockFile.requires = ModuleLock(depMap).requires
+    return writeResolvedLocks(DIR_CURRENT, lockFile)
 }
 
 func updateDepMap(path: String, preName: String, prePath: String, requires: ?DepInfo): Bool {
@@ -128,6 +122,7 @@ func updateDepMap(path: String, preName: String, prePath: String, requires: ?Dep
         UPDATE_ANALYSIS_ENGINE.addDepInfo(tomlInfo.pkg.name, DepInfo(getCanonicalPath(curModulePath)))
     }
     UPDATE_ANALYSIS_ENGINE.addDepPath(tomlInfo.pkg.name, curModulePath)
+    UPDATE_ANALYSIS_ENGINE.addDepToml(tomlInfo.pkg.name, tomlInfo)
 
     tomlInfo.pkg.path = curModulePath
     return updateDepModule(tomlInfo.dependencies, curModulePath, tomlInfo.pkg.name, "dependencies") &&
@@ -216,7 +211,7 @@ func checkGitLocalDep(name: String, curInfo: DepInfo, newInfo: DepInfo): Bool {
     return UPDATE_ANALYSIS_ENGINE.finalDepMap[name].sourcePath == newInfo.path.getOrDefault({=> ""})
 }
 
-func updateIndex(): Bool {
+public func updateIndex(): Bool {
     if (!UPDATE_DEPOT.loadConfiguration(isError: false)) {
         return true
     }
