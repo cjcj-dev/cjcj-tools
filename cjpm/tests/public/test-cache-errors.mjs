@@ -20,6 +20,7 @@ if(privateSdk!==null){
  assert(fs.lstatSync(exe+'.entry').isFile(),'installed cjpm launcher recipe required');
  assert.equal(path.resolve(process.env.CANGJIE_HOME??''),privateSdk,'compiler must belong to the selected SDK');
  const compiler=path.join(privateSdk,'bin/cjc'),kind=fs.lstatSync(compiler);
+ assert.equal(fs.realpathSync(path.dirname(compiler)),path.dirname(compiler),'compiler entry directory must not alias another directory');
  assert(kind.isFile()||kind.isSymbolicLink(),'private compiler entry must be a file or SDK-internal link');
  const inside=target=>{const relative=path.relative(privateSdk,target);return relative!==''&&relative!=='..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative);};
  if(kind.isSymbolicLink())assert(inside(path.resolve(path.dirname(compiler),fs.readlinkSync(compiler))),'compiler link must stay inside the private SDK');
