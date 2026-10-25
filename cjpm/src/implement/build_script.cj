@@ -17,8 +17,23 @@ public func runScript(scriptConfig: ScriptConfig, step: BuildScriptStep, command
         return true
     }
 
-    if (step == Pre && !scriptConfig.isRelocated && !buildScriptExe(scriptConfig, updateLocks: command == "update")) {
-        return false
+    if (step == Pre) {
+        // A backup left by another process is disk state, not proof that this
+        // process has resolved its metadata or registered source restoration.
+        let interrupted = scriptConfig.isRelocated && !RELOCATED_SCRIPT_MAP.contains(scriptConfig.scriptPath)
+        if (interrupted) {
+            try {
+                rename(scriptConfig.scriptPath + ".bak", to: scriptConfig.scriptPath, overwrite: false)
+                scriptConfig.isRelocated = false
+            } catch (e: Exception) {
+                eprintln("${e.message}\nError: failed to restore interrupted build script ${scriptConfig.scriptPath}")
+                return false
+            }
+        }
+        if (!scriptConfig.isRelocated &&
+            !buildScriptExe(scriptConfig, updateLocks: command == "update", forceRebuild: interrupted)) {
+            return false
+        }
     }
 
     let commandArg = "${step}-${command}"
@@ -277,12 +292,12 @@ func writeResolvedLocks(locks: HashMap<String, ModuleLock>): Bool {
     return true
 }
 
-func buildScriptExe(scriptConfig: ScriptConfig, updateLocks!: Bool = false): Bool {
+func buildScriptExe(scriptConfig: ScriptConfig, updateLocks!: Bool = false, forceRebuild!: Bool = false): Bool {
     let crossCompileBackup: String = crossCompileTarget
     crossCompileTarget = ""
 
     let buildConfig = BuildConfig()
-    buildConfig.isRebuild = updateLocks
+    buildConfig.isRebuild = updateLocks || forceRebuild
     let scriptDeps = getScriptDeps(scriptConfig, updateLocks) ?? return false
     if (!scriptDeps.isEmpty()) {
         var depPathList: ArrayList<String> = ArrayList<String>()

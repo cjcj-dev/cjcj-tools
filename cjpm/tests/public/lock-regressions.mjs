@@ -1,6 +1,6 @@
 #!/usr/bin/env zx
 // Run only on an allocated build host with an independently installed cjpm.
-// Usage: zx lock-regressions.mjs /absolute/install/cjpm /fresh/private/work registry|scripts|workspace|lifecycle
+// Usage: zx lock-regressions.mjs /absolute/install/cjpm /fresh/private/work registry|scripts|workspace|lifecycle|reentry
 import { $ } from 'zx';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 
 const [cjpm, work, mode] = process.argv.slice(2);
 assert.ok(path.isAbsolute(cjpm) && path.isAbsolute(work));
-assert.ok(['registry', 'scripts', 'workspace', 'lifecycle'].includes(mode));
+assert.ok(['registry', 'scripts', 'workspace', 'lifecycle', 'reentry'].includes(mode));
 await fs.mkdir(work, { recursive: false });
 const commands = [], checks = [];
 async function write(file, text) {
@@ -414,5 +414,93 @@ async function lifecycle() {
   });
 }
 
-await ({ registry, scripts, workspace, lifecycle })[mode]();
+async function reentry() {
+  const f = await scriptFixture();
+  const ordinary = `[dependencies]\nsdep = { git = "${f.repo}", branch = "selected" }\n`;
+  const app = 'package consumer\nimport std.env.*\nimport std.fs.*\nmain(): Int64 { let failed = getCommandLine().contains("--fail"); File.writeTo("app-result", (if (failed) { "fail" } else { "ok" }).toArray()); return if (failed) { 9 } else { 0 } }\n';
+  async function failedProcess(label, sourceDir) {
+    const dir = path.join(work, label);
+    const manifest = pkg('consumer', 'executable') + `src-dir = "${sourceDir}"\n` + ordinary;
+    await write(path.join(dir, 'cjpm.toml'), manifest);
+    await write(path.join(dir, sourceDir, 'main.cj'), app);
+    await write(path.join(dir, 'cangjie-repo.toml'), '[repository.cache]\npath = "./cache"\n');
+    await run(`${label}-build-app`, [cjpm, 'build', '--skip-script', '-j', '2'], dir);
+    const lock = path.join(dir, 'cjpm.lock'), source = path.join(dir, 'build.cj');
+    const original = await read(lock);
+    await check(`${label}-ordinary-baseline`, () => {
+      assert.match(original, /\[requires\./);
+      assert.doesNotMatch(original, /\[scripts\./);
+    });
+    await write(path.join(dir, 'cjpm.toml'), manifest + f.declaration);
+    await write(source, f.script);
+    // Each run() launches a distinct installed cjpm process. The second process
+    // below must recover disk state, with neither manual rename nor cache reset.
+    await run(`${label}-process-a`, [cjpm, 'run', '--skip-build', '--', '--fail'], dir, false);
+    await check(`${label}-failed-state`, async () => {
+      assert.equal(await read(path.join(dir, 'app-result')), 'fail');
+      assert.equal(await read(path.join(dir, 'script-result')), '11');
+      assert.equal(await read(lock), original);
+      assert.equal(await exists(source), sourceDir !== '.');
+      assert.equal(await exists(source + '.bak'), sourceDir === '.');
+      assert.equal(await read(sourceDir === '.' ? source + '.bak' : source), f.script);
+    });
+    return { label, dir, lock, source, original };
+  }
+  async function successfulProcess(item, value = 11, commit = f.first, command = ['run', '--skip-build']) {
+    await run(`${item.label}-process-b`, [cjpm, ...command], item.dir);
+    await check(`${item.label}-successful-state`, async () => {
+      const saved = await read(item.lock);
+      assert.match(saved, /^version = 1$/m);
+      const scripts = saved.split(/^\[scripts(?:\.|\])/m)[1];
+      assert.ok(scripts && scripts.includes(`#${commit}`), 'actual script pin must be persisted');
+      assert.equal(await read(path.join(item.dir, 'script-result')), String(value));
+      assert.equal(await read(item.source), f.script);
+      assert.equal(await exists(item.source + '.bak'), false);
+      if (command[0] === 'run') {
+        assert.equal(await read(path.join(item.dir, 'app-result')), 'ok');
+        assert.equal(saved.split(/^\[scripts(?:\.|\])/m)[0].trimEnd(), item.original.trimEnd());
+      }
+    });
+  }
+  // Independent default-src control and the exact two-process src-dir="." case.
+  await successfulProcess(await failedProcess('default-src-control', 'src'));
+  await successfulProcess(await failedProcess('relocated', '.'));
+  // Reentry followed by run's internal build reaches another Pre in the same
+  // process; its registered relocation must retain the normal reuse behavior.
+  await successfulProcess(await failedProcess('relocated-build', '.'), 11, f.first,
+    ['run', '--build-args', '-j 2']);
+
+  const invalid = await failedProcess('relocated-invalid-lock', '.');
+  const badLock = invalid.original.replace(/^version = 1/m, 'version = 2');
+  assert.notEqual(badLock, invalid.original);
+  await write(invalid.lock, badLock);
+  await fs.rm(path.join(invalid.dir, 'script-result'));
+  const rejected = await run('relocated-invalid-lock-rejected', [cjpm, 'run', '--skip-build'], invalid.dir, false);
+  await check('relocated-invalid-lock-reached', async () => {
+    assert.match(rejected.stderr, /incompatible version/);
+    assert.equal(await read(invalid.lock), badLock);
+    assert.equal(await exists(path.join(invalid.dir, 'script-result')), false);
+    assert.equal(await read(path.join(invalid.dir, 'app-result')), 'fail');
+  });
+  await write(invalid.lock, invalid.original);
+  await successfulProcess(invalid);
+
+  const cold = await failedProcess('relocated-cold', '.');
+  // This separate arm models lost compiled outputs, not the primary warm case.
+  await fs.rm(path.join(cold.dir, 'build-script-cache'), { recursive: true, force: true });
+  await successfulProcess(cold);
+
+  const update = await failedProcess('relocated-update', '.');
+  await run('relocated-skip-control', [cjpm, 'run', '--skip-build', '--skip-script'], update.dir);
+  await check('relocated-skip-no-producer', async () => {
+    assert.equal(await read(update.lock), update.original);
+    assert.equal(await exists(update.source), false);
+    assert.equal(await read(update.source + '.bak'), f.script);
+  });
+  await f.advance();
+  const next = (await run('reentry-git-next', ['git', 'rev-parse', 'HEAD'], f.repo)).stdout.trim();
+  await successfulProcess(update, 22, next, ['update']);
+}
+
+await ({ registry, scripts, workspace, lifecycle, reentry })[mode]();
 console.log(`PASS public lock regression: ${mode}`);
