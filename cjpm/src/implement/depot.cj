@@ -126,7 +126,8 @@ public class Depot {
     }
 
     // download package from central repository
-    public func download(name: String, org: String, version: String): (Bool, String) {
+    public func download(name: String, org: String, version: String,
+        lockedChecksum!: ?String = None): (Bool, String) {
         var downloadUrl = baseUrl + "/pkg/${name}/${version}"
         var orgStr = ""
         if (!org.isEmpty()) {
@@ -183,6 +184,10 @@ public class Depot {
             let sha256Instance = SHA256()
             sha256Instance.write(buffer.toArray())
             let sha256sum = toHexString(sha256Instance.finish())
+            if (let Some(checksum) <- lockedChecksum && !checksum.isEmpty() &&
+                checksum != "sha256:${sha256sum}") {
+                return (false, "package does not match locked checksum for ${name}-${version}; run 'cjpm update'")
+            }
             let indexPath = this.getIndex(name, org)
             if (indexPath.isEmpty()) {
                 return (false, "index error while downloading ${name}-${version} ${orgStr}")

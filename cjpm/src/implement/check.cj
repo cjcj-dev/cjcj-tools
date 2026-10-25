@@ -14,16 +14,16 @@ func resolve(globalConfig: GlobalConfig, isScriptDep!: Bool = false,
     rootTomlDocument!: ?ModuleTomlDocument = None): (DepModel, Bool, Bool) {
     var dm = DepModel(globalConfig)
 
-    let (loadFlag, lockFile) = if (isScriptDep) {
-        (true, ModuleLock())
-    } else {
-        loadLockFile(globalConfig.rootPath)
-    }
+    let (loadFlag, lockFile) = loadLockFile(globalConfig.rootPath)
     if (!loadFlag) {
         return (dm, false, false)
     }
 
-    let (checkSuccessful, mockUsed) = dm.resolve(globalConfig.rootPath, lockFile.requires, isScriptDep,
+    let locked = if (isScriptDep) {
+        if (globalConfig.updateScriptLocks) { HashMap<String, DepInfo>() } else { lockFile.scripts }
+    } else { lockFile.requires }
+    dm.depAnalysisEngine.refreshCache = isScriptDep && globalConfig.updateScriptLocks
+    let (checkSuccessful, mockUsed) = dm.resolve(globalConfig.rootPath, locked, isScriptDep,
         rootTomlDocument: rootTomlDocument)
     if (!checkSuccessful) {
         return (dm, false, mockUsed)
@@ -32,15 +32,6 @@ func resolve(globalConfig: GlobalConfig, isScriptDep!: Bool = false,
     let depMap = dm.depAnalysisEngine.getDepMap()
     // Don't lock path dependencies since it would only cause problems for transitive path dependencies
     depMap.removeIf {_, v => v.path.isSome()}
-
-    if (isScriptDep) {
-        resolvedScriptDeps[getCanonicalPath(globalConfig.rootPath)] = dm.depAnalysisEngine.getDepMap()
-    } else {
-        let scripts = resolvedScriptDeps.get(getCanonicalPath(globalConfig.rootPath)) ?? lockFile.scripts
-        if (!creatLockFile(globalConfig.rootPath, ModuleLock(depMap, scripts))) {
-            return (dm, false, mockUsed)
-        }
-    }
 
     // combined is only used in cjpm build
     if (!dm.globalConfig.isPureBuild) {
@@ -66,6 +57,15 @@ func resolve(globalConfig: GlobalConfig, isScriptDep!: Bool = false,
     }
 
     stripSuperPkgForcedRequires(dm)
+
+    if (isScriptDep) {
+        resolvedScriptDeps[getCanonicalPath(globalConfig.rootPath)] = dm.depAnalysisEngine.getDepMap()
+    } else {
+        lockFile.requires = ModuleLock(depMap).requires
+        if (!writeResolvedLocks(globalConfig.rootPath, lockFile)) {
+            return (dm, false, mockUsed)
+        }
+    }
 
     return (dm, true, mockUsed)
 }

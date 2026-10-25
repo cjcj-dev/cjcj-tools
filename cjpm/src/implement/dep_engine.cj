@@ -39,6 +39,7 @@ public class DepAnalysisEngine {
     // sign of engine
     public var isTest: Bool = false
     public var isDebug: Bool = false
+    public var refreshCache: Bool = false
     public var rootModulePath: String = ""
     public let target: String = getCompileTarget()
 
@@ -47,7 +48,7 @@ public class DepAnalysisEngine {
 
     // central-repo dependencies collected by DepModel.depCheck
     // records repo-deps imported by cjpm.lock
-    public let lockRepoDepMap: HashMap<String, String> = HashMap<String, String>()
+    public let lockRepoDepMap: HashMap<String, DepInfo> = HashMap<String, DepInfo>()
     // records repo-deps imported by local/git deps
     public let repoDepList: ArrayList<(String, DepInfo)> = ArrayList<(String, DepInfo)>()
     // records of replace modules
@@ -74,7 +75,7 @@ public class DepAnalysisEngine {
     public func recordLock(locked: HashMap<String, DepInfo>): Unit {
         for ((name, depInfo) in locked) {
             if (depInfo.isCenterRepoDep() && let Some(version) <- depInfo.version) {
-                this.lockRepoDepMap.add(name, version)
+                this.lockRepoDepMap.add(name, depInfo)
             }
         }
         locked.remove(all: this.lockRepoDepMap.keys())
@@ -440,50 +441,64 @@ public class DepAnalysisEngine {
         }
 
         for ((fullName, version) in this.currentState.fixedVersionMap) {
+            // Validate before the cache shortcut too. A cached source directory is
+            // not permission to silently replace the lock's registry identity.
+            if (!checkRegistryLock(fullName, version)) {
+                return false
+            }
+        }
+
+        for ((fullName, version) in this.currentState.fixedVersionMap) {
             let (org, name) = splitFullName(fullName)
             downloadSem.acquire()
             downloadTasks.add(
                 spawn {
                     =>
-                    // download artifact
-                    let sourcePath = Path(this.depot.localRepo).join("source").
-                        join(if (org.isEmpty()) { "default" } else { org }).
-                        join("${name}-${version}").toString()
-                    if (!directoryExists(sourcePath)) {
-                        try {
-                            let (flag, output) = this.depot.download(name, org, version)
-                            if (!flag) {
-                                eprintln("Error: ${output}")
+                    try {
+                        // download artifact
+                        let sourcePath = Path(this.depot.localRepo).join("source").
+                            join(if (org.isEmpty()) { "default" } else { org }).
+                            join("${name}-${version}").toString()
+                        if (this.refreshCache || !directoryExists(sourcePath)) {
+                            try {
+                                let checksum = if (let Some(locked) <- this.lockRepoDepMap.get(fullName)) {
+                                    locked.checksum
+                                } else { None }
+                                let (flag, output) = this.depot.download(name, org, version, lockedChecksum: checksum)
+                                if (!flag) {
+                                    eprintln("Error: ${output}")
+                                    return false
+                                }
+                            } catch (e: CryptoException | TlsException) {
+                                eprintln("Error: ${e.message}")
+                                eprintln("Error: please ensure that openssl has been correctly installed and configured according to the \"Usage Instruction\" section of the documentation")
+                                return false
+                            } catch (e: Exception) {
+                                eprintln("Error: ${e.message}")
+                                if (e.message.contains("HttpEngine1#connect")) {
+                                    eprintln("Error: unable to connect to https server.")
+                                }
                                 return false
                             }
-                        } catch (e: CryptoException | TlsException) {
-                            eprintln("Error: ${e.message}")
-                            eprintln("Error: please ensure that openssl has been correctly installed and configured according to the \"Usage Instruction\" section of the documentation")
-                            return false
-                        } catch (e: Exception) {
-                            eprintln("Error: ${e.message}")
-                            if (e.message.contains("HttpEngine1#connect")) {
-                                eprintln("Error: unable to connect to https server.")
-                            }
-                            return false
                         }
-                    }
 
-                    // save final module
-                    let finalDep = FinalDepModule()
-                    finalDep.name = fullName
-                    finalDep.sourcePath = sourcePath
-                    finalDep.rootModulePath = this.rootModulePath
-                    finalDep.sourceInfo.version = version
-                    if (this.currentState.depRecordMap[fullName].outputType.isValid) {
-                        finalDep.sourceInfo.outputType = this.currentState.depRecordMap[fullName].outputType
-                    }
-                    synchronized(downloadMtx) {
-                        this.finalDepMap.add(fullName, finalDep)
-                    }
+                        // save final module
+                        let finalDep = FinalDepModule()
+                        finalDep.name = fullName
+                        finalDep.sourcePath = sourcePath
+                        finalDep.rootModulePath = this.rootModulePath
+                        finalDep.sourceInfo.version = version
+                        if (this.currentState.depRecordMap[fullName].outputType.isValid) {
+                            finalDep.sourceInfo.outputType = this.currentState.depRecordMap[fullName].outputType
+                        }
+                        synchronized(downloadMtx) {
+                            this.finalDepMap.add(fullName, finalDep)
+                        }
 
-                    downloadSem.release()
-                    return true
+                        return true
+                    } finally {
+                        downloadSem.release()
+                    }
                 }
             )
         }
@@ -494,6 +509,25 @@ public class DepAnalysisEngine {
         }
 
         return downloadFlag
+    }
+
+    func checkRegistryLock(name: String, version: String): Bool {
+        let locked = this.lockRepoDepMap.get(name) ?? return true
+        if (locked.source.isSome() && locked.version != Some(version)) {
+            eprintln("Error: locked version of '${name}' changed; run 'cjpm update'")
+            return false
+        }
+        // v0 has no source/checksum. Its resolved metadata is filled on migration.
+        if (let Some(source) <- locked.source) {
+            let expectedSource = "registry+${this.depot.baseUrl.removeSuffix("/")}"
+            let indexChecksum = this.indexMap[name][version].sha256sum.toAsciiLower()
+            let expectedChecksum = if (indexChecksum.isEmpty()) { "" } else { "sha256:${indexChecksum}" }
+            if (source != expectedSource || locked.checksum != Some(expectedChecksum)) {
+                eprintln("Error: locked registry source/checksum of '${name}' changed; run 'cjpm update'")
+                return false
+            }
+        }
+        return true
     }
 
     func initFinalKey(name: String): Unit {
@@ -749,12 +783,15 @@ public class DepRecord {
     }
 
     // get the highest available version
-    public func getNextAvailable(lockRepoDepMap: HashMap<String, String>): String {
+    public func getNextAvailable(lockRepoDepMap: HashMap<String, DepInfo>): String {
         // if any version is locked, use it first
-        if (let Some(lockedVersion) <- lockRepoDepMap.get(this.fullName) &&
-            this.available.contains(lockedVersion) &&
-            !this.banned.contains(lockedVersion)) {
-            return lockedVersion
+        if (let Some(locked) <- lockRepoDepMap.get(this.fullName)) {
+            let lockedVersion = locked.version.getOrThrow()
+            if (this.available.contains(lockedVersion) && !this.banned.contains(lockedVersion)) {
+                return lockedVersion
+            }
+            // Preserve v0's version preference; a v1 identity is an explicit pin.
+            if (locked.source.isSome()) { return "" }
         }
 
         for (version in this.available) {

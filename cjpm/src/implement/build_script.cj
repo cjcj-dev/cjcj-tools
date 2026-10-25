@@ -17,7 +17,7 @@ public func runScript(scriptConfig: ScriptConfig, step: BuildScriptStep, command
         return true
     }
 
-    if (step == Pre && !scriptConfig.isRelocated && !buildScriptExe(scriptConfig)) {
+    if (step == Pre && !scriptConfig.isRelocated && !buildScriptExe(scriptConfig, updateLocks: command == "update")) {
         return false
     }
 
@@ -188,16 +188,26 @@ func getDepPath(modulePath: String, depName: String, depInfo: DepInfo): Option<S
     }
 }
 
-func getScriptDeps(scriptConfig: ScriptConfig): HashMap<String, DepInfo> {
+func getScriptDeps(scriptConfig: ScriptConfig, updateLocks: Bool): ?HashMap<String, DepInfo> {
     let deps = scriptConfig.scriptDep
     let (loadFlag, lockFile) = loadLockFile(scriptConfig.modulePath)
     if (!loadFlag) {
-        return deps
+        return None
     }
+    if (updateLocks) { return deps }
 
     for ((depName, depInfo) in lockFile.scripts) {
         if (deps.contains(depName)) {
-            deps.add(depName, depInfo)
+            if (depInfo.isGitDep()) {
+                let (_, error) = depInfo.isAlternative(deps[depName])
+                if (!error.isEmpty()) {
+                    eprintln("Error: locked script dependency '${depName}' changed")
+                    return None
+                }
+                deps.add(depName, depInfo)
+            }
+            // Registry requirements remain declarations. The nested resolver
+            // applies the original lock metadata without hiding a changed range.
         }
     }
     return deps
@@ -205,6 +215,7 @@ func getScriptDeps(scriptConfig: ScriptConfig): HashMap<String, DepInfo> {
 
 func writeScriptLock(rootPath: String, scriptDeps: HashMap<String, DepInfo>): Bool {
     if (scriptDeps.isEmpty()) {
+        resolvedScriptDeps[getCanonicalPath(rootPath)] = HashMap<String, DepInfo>()
         return true
     }
 
@@ -223,12 +234,45 @@ func writeScriptLock(rootPath: String, scriptDeps: HashMap<String, DepInfo>): Bo
     return true
 }
 
-func buildScriptExe(scriptConfig: ScriptConfig): Bool {
+// Persist every script producer at the same module path getScriptDeps reads.
+// This runs only after the outer dependency checks succeed, never from the
+// nested script build. Pre-serialize all entries before changing any lock.
+func writeResolvedLocks(rootPath: String, rootLock: ModuleLock): Bool {
+    let canonicalRoot = getCanonicalPath(rootPath)
+    let locks = HashMap<String, ModuleLock>()
+    locks[canonicalRoot] = rootLock
+    for ((modulePath, scripts) in resolvedScriptDeps) {
+        let lock = if (modulePath == canonicalRoot) {
+            rootLock
+        } else {
+            let (ok, existing) = loadLockFile(modulePath)
+            if (!ok) { return false }
+            existing
+        }
+        lock.scripts = scripts
+        locks[modulePath] = lock
+    }
+    try {
+        for ((_, lock) in locks) {
+            let _ = lock.serialize()
+        }
+    } catch (e: Exception) {
+        eprintln("Error: ${e.message}")
+        return false
+    }
+    for ((modulePath, lock) in locks) {
+        if (!creatLockFile(modulePath, lock)) { return false }
+    }
+    return true
+}
+
+func buildScriptExe(scriptConfig: ScriptConfig, updateLocks!: Bool = false): Bool {
     let crossCompileBackup: String = crossCompileTarget
     crossCompileTarget = ""
 
     let buildConfig = BuildConfig()
-    let scriptDeps = getScriptDeps(scriptConfig)
+    buildConfig.isRebuild = updateLocks
+    let scriptDeps = getScriptDeps(scriptConfig, updateLocks) ?? return false
     if (!scriptDeps.isEmpty()) {
         var depPathList: ArrayList<String> = ArrayList<String>()
         for ((depName, depInfo) in scriptDeps) {
@@ -245,6 +289,7 @@ func buildScriptExe(scriptConfig: ScriptConfig): Bool {
         buildConfig.globalConfig.isIncremental = true
         buildConfig.globalConfig.rootPath = scriptConfig.modulePath
         buildConfig.globalConfig.resolveType = RESOLVE_BUILD
+        buildConfig.globalConfig.updateScriptLocks = updateLocks
 
         let tomlInfo: TomlInfo = TomlInfo()
         tomlInfo.isWorkSpaceConfig = true

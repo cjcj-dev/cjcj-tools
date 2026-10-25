@@ -357,14 +357,12 @@ class DepModel {
 
     // verify dependencies from central repository
     func repoDepCheck(finalDep: FinalDepModule): Bool {
-        // lock is changed, print warning
         let finalVersion = finalDep.sourceInfo.version ?? return false
-        if (let Some(lockedVersion) <- this.depAnalysisEngine.lockRepoDepMap.get(finalDep.name) &&
-            (lockedVersion != finalVersion)) {
-            eprintln("Warning: locked version '${lockedVersion}' of module '${finalDep.name}' " +
+        if (let Some(locked) <- this.depAnalysisEngine.lockRepoDepMap.get(finalDep.name) &&
+            locked.source.isNone() && locked.version != Some(finalVersion)) {
+            eprintln("Warning: locked version '${locked.version.getOrThrow()}' of module '${finalDep.name}' " +
                 "caused conflictions during dependency-analysis, use version '${finalVersion}' instead")
         }
-
         let tomlInfo = loadModuleFile(finalDep.sourcePath) ?? return false
         if (tomlInfo.isWorkSpaceConfig) { // always not
             eprintln("Error: dependency '${finalDep.name}' from central repository cannot be a workspace")

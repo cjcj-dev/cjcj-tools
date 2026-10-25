@@ -47,13 +47,29 @@ public class ModuleLock <: Serializable<ModuleLock> {
     }
 
     public func serialize(): DataModel {
+        let outputVersion = this.outputVersion()
         let res = DataModelStruct()
-        res.add(field<UInt64>(VERSION, MODULE_LOCK_VERSION))
-        res.add(Field("requires", serializeLockDeps(this.requires)))
+        res.add(field<UInt64>(VERSION, outputVersion))
+        res.add(Field("requires", serializeLockDeps(this.requires, outputVersion)))
         if (!this.scripts.isEmpty()) {
-            res.add(Field("scripts", serializeLockDeps(this.scripts)))
+            res.add(Field("scripts", serializeLockDeps(this.scripts, outputVersion)))
         }
         return res
+    }
+
+    // check/--skip-script must not run scripts just to migrate an existing v0
+    // lock. Keep that format until both sections have actually been resolved.
+    func outputVersion(): UInt64 {
+        if (version == 0) {
+            for (deps in [requires, scripts]) {
+                for ((_, dep) in deps) {
+                    if (dep.version.isNone() || dep.source.isNone()) {
+                        return 0
+                    }
+                }
+            }
+        }
+        return MODULE_LOCK_VERSION
     }
 
     public static func deserialize(dm: DataModel): ModuleLock {
@@ -104,10 +120,11 @@ public func creatLockFile(rootPath: String, lockFile: ModuleLock): Bool {
 
     try {
         let buffer = ByteBuffer()
-        buffer.write("version = ${MODULE_LOCK_VERSION}\n".toArray())
-        writeLockSection(buffer, "requires", lockFile.requires)
+        let outputVersion = lockFile.outputVersion()
+        buffer.write("version = ${outputVersion}\n".toArray())
+        writeLockSection(buffer, "requires", lockFile.requires, outputVersion)
         if (!lockFile.scripts.isEmpty()) {
-            writeLockSection(buffer, "scripts", lockFile.scripts)
+            writeLockSection(buffer, "scripts", lockFile.scripts, outputVersion)
         }
         // Serialize before opening the file so incomplete v0 metadata cannot truncate it.
         let bytes = buffer.bytes()
@@ -148,17 +165,17 @@ func serializeLockDep(dep: DepInfo): DataModelStruct {
     return result
 }
 
-func serializeLockDeps(deps: HashMap<String, DepInfo>): DataModelStruct {
+func serializeLockDeps(deps: HashMap<String, DepInfo>, version: UInt64): DataModelStruct {
     let result = DataModelStruct()
     let names = deps.keys().toArray()
     sort(names)
     for (name in names) {
-        result.add(Field(name, serializeLockDep(deps[name])))
+        result.add(Field(name, if (version == 0) { deps[name].serialize() } else { serializeLockDep(deps[name]) }))
     }
     return result
 }
 
-func writeLockSection(buffer: ByteBuffer, section: String, deps: HashMap<String, DepInfo>): Unit {
+func writeLockSection(buffer: ByteBuffer, section: String, deps: HashMap<String, DepInfo>, version: UInt64): Unit {
     if (deps.isEmpty()) {
         buffer.write("\n[${section}]\n".toArray())
         return
@@ -167,7 +184,7 @@ func writeLockSection(buffer: ByteBuffer, section: String, deps: HashMap<String,
     sort(names)
     for (name in names) {
         buffer.write("\n[${section}.${TomlString(name)}]\n".toArray())
-        EncoderToml(buffer).encode(serializeLockDep(deps[name]))
+        EncoderToml(buffer).encode(if (version == 0) { deps[name].serialize() } else { serializeLockDep(deps[name]) })
     }
 }
 

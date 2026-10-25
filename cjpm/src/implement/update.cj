@@ -26,6 +26,7 @@ public func doUpdate(): Bool {
 
     // initialize dep-analysis engine
     UPDATE_ANALYSIS_ENGINE.isTest = true
+    UPDATE_ANALYSIS_ENGINE.refreshCache = true
     UPDATE_ANALYSIS_ENGINE.rootModulePath = getCanonicalPath(DIR_CURRENT)
 
     var tomlInfo: TomlInfo = loadModuleFile(DIR_CURRENT) ?? return false
@@ -80,8 +81,8 @@ public func doUpdate(): Bool {
     let depMap = UPDATE_ANALYSIS_ENGINE.getDepMap()
     depMap.removeIf {_, v => v.path.isSome()}
 
-    let scripts = resolvedScriptDeps.get(getCanonicalPath(DIR_CURRENT)) ?? lockFile.scripts
-    return creatLockFile(DIR_CURRENT, ModuleLock(depMap, scripts))
+    lockFile.requires = ModuleLock(depMap).requires
+    return writeResolvedLocks(DIR_CURRENT, lockFile)
 }
 
 func updateDepMap(path: String, preName: String, prePath: String, requires: ?DepInfo): Bool {

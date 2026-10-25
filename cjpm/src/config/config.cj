@@ -1141,6 +1141,7 @@ public class GlobalConfig {
     public var isIncremental: Bool = false
     public var isForScript: Bool = false
     public var isSkipScript: Bool = false
+    public var updateScriptLocks: Bool = false
     public var isProjectCombine: Bool = false
     public var isAnalysisCompilePerformance: Bool = false
     public var rootName: String = WORKSPACE_NAME
@@ -1179,6 +1180,7 @@ public class GlobalConfig {
         this.isIncremental = globalConfig.isIncremental
         this.isForScript = globalConfig.isForScript
         this.isSkipScript = globalConfig.isSkipScript
+        this.updateScriptLocks = globalConfig.updateScriptLocks
         this.isProjectCombine = globalConfig.isProjectCombine
         this.resolveType = globalConfig.resolveType
         this.rootName = globalConfig.rootName

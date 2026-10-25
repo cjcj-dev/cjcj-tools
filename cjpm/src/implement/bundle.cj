@@ -494,6 +494,12 @@ func uncompressCjp(org: String, name: String, version: String, buffer: Array<UIn
             join(if (org.isEmpty()) { "default" } else { org }).
             join(finalDirName)
         if (dirList.iterator().any({f: FileInfo => f.name == "${finalDirName}"})) {
+            // Explicit update may refresh the same name/version from a changed
+            // registry. Replace the old cache only after download verification
+            // and extraction have both succeeded.
+            if (directoryExists(finalRepositoryPath.toString()) && !deleteDirectory(finalRepositoryPath.toString())) {
+                return (false, "${finalDirName} load failed while replacing repository cache")
+            }
             rename(Path(repositoryTempPath).join(finalDirName), to: finalRepositoryPath, overwrite: true)
         } else {
             return (false, "${finalDirName} load failed with incorrect content in cjp package")
