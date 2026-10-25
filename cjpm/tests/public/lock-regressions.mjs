@@ -255,10 +255,21 @@ async function workspace() {
   const manifest = await read(path.join(member, 'cjpm.toml'));
   await write(path.join(member, 'cjpm.toml'), manifest + '[dependencies]\nabsent = { path = "./missing" }\n');
   const firstFailure = await run('member-resolution-failure', [cjpm, 'build', '-j', '2'], root, false);
-  await check('failed-outer-resolution-no-member-lock', async () => {
+  await check('member-preflight-failure-no-producer-or-lock', async () => {
     assert.match(firstFailure.stderr, /missing/);
+    assert.equal(await exists(result), false, 'invalid ordinary dependency must fail before the script');
+    assert.equal(await exists(lock), false);
+    assert.equal(await exists(path.join(root, 'cjpm.lock')), false);
+  });
+  // A valid graph reaches the member script before verifyModuleConfigPost checks FFI libraries.
+  const missingFfi = '[ffi.c.absent]\npath = "./missing-ffi"\n';
+  await write(path.join(member, 'cjpm.toml'), manifest + missingFfi);
+  const firstPostFailure = await run('member-post-script-failure', [cjpm, 'build', '-j', '2'], root, false);
+  await check('failed-outer-resolution-no-member-lock', async () => {
+    assert.match(firstPostFailure.stderr, /can not find the library 'absent'/);
     assert.equal(await read(result), '11', 'script producer must have been reached before outer failure');
     assert.equal(await exists(lock), false);
+    assert.equal(await exists(path.join(root, 'cjpm.lock')), false);
   });
   await write(path.join(member, 'cjpm.toml'), manifest);
   await run('member-first', [cjpm, 'build', '-j', '2'], root);
@@ -292,9 +303,20 @@ async function workspace() {
   });
   await write(lock, saved);
   await run('member-restored', [cjpm, 'build', '-j', '2'], root);
+  await fs.rm(result);
   await write(path.join(member, 'cjpm.toml'), manifest + '[dependencies]\nabsent = { path = "./missing" }\n');
-  await run('existing-member-resolution-failure', [cjpm, 'build', '-j', '2'], root, false);
+  const existingFailure = await run('existing-member-resolution-failure', [cjpm, 'build', '-j', '2'], root, false);
+  await check('existing-member-preflight-no-producer-locks-preserved', async () => {
+    assert.match(existingFailure.stderr, /missing/);
+    assert.equal(await exists(result), false);
+    assert.equal(await read(lock), saved);
+    assert.equal(await read(path.join(root, 'cjpm.lock')), rootBefore);
+  });
+  await write(path.join(member, 'cjpm.toml'), manifest + missingFfi);
+  const existingPostFailure = await run('existing-member-post-script-failure', [cjpm, 'build', '-j', '2'], root, false);
   await check('existing-member-locks-preserved', async () => {
+    assert.match(existingPostFailure.stderr, /can not find the library 'absent'/);
+    assert.equal(await read(result), '11', 'this process must reach the script before the post check fails');
     assert.equal(await read(lock), saved);
     assert.equal(await read(path.join(root, 'cjpm.lock')), rootBefore);
   });
