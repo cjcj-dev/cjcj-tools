@@ -61,9 +61,10 @@ public func parse(data: String): Parser {
 }
 
 public func parse(data: Array<Byte>): Parser {
+    // Parse the original byte array in place so large inputs are not duplicated as Strings.
     var contentOffset: Int64 = 0
 
-    // Skip the UTF-8 BOM by offset instead of copying the remaining file bytes.
+    // Keep the BOM in the backing array and skip it through the lexer offset.
     if (data.size >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF) {
         contentOffset = 3
     }
@@ -230,13 +231,25 @@ public class Parser {
                 let (v, t) = valueDatetime(it)
                 match {
                     case t.toString() == TOML_LOCAL_TIME.toString() =>
-                        let lt = LocalTime(v.hour, v.minute, v.second, nanosecond: v.nanosecond)
+                        let lt = LocalTime(
+                            v.hour,
+                            v.minute,
+                            v.second,
+                            nanosecond: v.nanosecond,
+                            precision: fractionalSecondPrecision(it.val)
+                        )
                         return (TomlLocalTime(lt), t)
                     case t.toString() == TOML_LOCAL_DATE.toString() =>
                         let ld = LocalDate(v.year, v.month, v.dayOfMonth)
                         return (TomlLocalDate(ld), t)
                     case t.toString() == TOML_LOCAL_DATETIME.toString() =>
-                        let lt = LocalTime(v.hour, v.minute, v.second, nanosecond: v.nanosecond)
+                        let lt = LocalTime(
+                            v.hour,
+                            v.minute,
+                            v.second,
+                            nanosecond: v.nanosecond,
+                            precision: fractionalSecondPrecision(it.val)
+                        )
                         let ld = LocalDate(v.year, v.month, v.dayOfMonth)
                         let ldt = LocalDatetime(ld, lt)
                         return (TomlLocalDatetime(ldt), t)
@@ -699,6 +712,13 @@ public class Parser {
             case _ => throw ParseException("Cannot infer primitive type of lex item '${it.typ}'.")
         }
     }
+}
+
+func fractionalSecondPrecision(value: String): Int64 {
+    if (let Some(dot) <- value.indexOf(UInt8(UInt32(r'.')))) {
+        return Int64(value.size - dot - 1)
+    }
+    return 0
 }
 
 func numHasLeadingZero(s: String): Bool {

@@ -5,7 +5,9 @@
 // See https://cangjie-lang.cn/pages/LICENSE for license information.
 
 #include <fstream>
+#include <sstream>
 #include "CjdIndex.h"
+#include "../common/FileStore.h"
 
 namespace Cangjie {
 // LCOV_EXCL_START
@@ -26,8 +28,9 @@ void DCompilerInstance::ImportCjoToManager(const std::unique_ptr<ark::CjoManager
     auto allDependencies = graph->FindAllDependencies(pkgNameForPath);
     for (auto &package: allDependencies) {
         for (auto &item: usrCjoFileCacheMap) {
-            if (item.second.count(package)) {
-                importManager->SetPackageCjoCache(package, item.second[package]);
+            auto it = item.second.find(package);
+            if (it != item.second.end()) {
+                importManager->SetPackageCjoCache(package, *it->second);
             }
         }
     }
@@ -148,33 +151,112 @@ void CjdIndexer::BuildCJDIndex()
     Trace::Log("BuildCJDIndex end");
 }
 
-SymbolLocation CjdIndexer::GetSymbolDeclaration(SymbolID id, const std::string& fullPkgName)
+const Symbol *CjdIndexer::GetSymbol(SymbolID id, const std::string& fullPkgName)
 {
-    SymbolLocation loc;
     if (auto found = pkgSymsMap.find(fullPkgName); found != pkgSymsMap.end()) {
-        for (auto &sym: found->second) {
+        for (const auto &sym : found->second) {
             if (sym.id == id) {
-                loc = sym.location;
-                break;
+                return &sym;
             }
         }
     }
-    return loc;
+    return nullptr;
 }
 
-CommentGroups CjdIndexer::GetSymbolComments(SymbolID id, const std::string& fullPkgName)
+void CjdIndexer::BuildSourceLineIndex()
 {
-    CommentGroups comments;
-    if (auto found = pkgSymsMap.find(fullPkgName); found != pkgSymsMap.end()) {
-        for (auto &sym: found->second) {
-            if (sym.id == id) {
-                comments = sym.comments;
-                break;
+    for (const auto &[pkgName, pkg] : pkgMap) {
+        auto &files = pkgLineIndex[pkgName];
+        for (const auto &[path, content] : pkg->bufferCache) {
+            std::vector<size_t> offsets;
+            offsets.push_back(0);
+            for (size_t i = 0; i < content.size(); ++i) {
+                if (content[i] == '\n') {
+                    offsets.push_back(i + 1);
+                }
+            }
+            files.emplace(path, std::move(offsets));
+        }
+    }
+}
+
+std::string CjdIndexer::ExtractSignatureFromSource(const std::string& identifier, const Position& begin,
+                                                   const Position& end, const std::string& fullPkgName,
+                                                   const std::string& filePath)
+{
+    auto pkg = pkgMap.find(fullPkgName);
+    // Cangjie Position: line and column start at 1, column is a byte offset within the line.
+    if (pkg == pkgMap.end() || begin.line <= 0 || end.line < begin.line) { return {}; }
+    auto lineIdx = pkgLineIndex.find(fullPkgName);
+    if (lineIdx == pkgLineIndex.end()) { return {}; }
+
+    auto byteOffset = [](const std::string_view &line, int column) -> size_t {
+        return column <= 1 ? 0 : std::min(static_cast<size_t>(column - 1), line.size());
+    };
+    // Slice lines [begin.line, end.line] using the precomputed per-line offsets (O(decl lines)).
+    auto sliceFrom = [&begin, &end, &byteOffset](const std::string &content,
+                                                 const std::vector<size_t> &offsets) -> std::string {
+        if (static_cast<size_t>(end.line) > offsets.size()) { return {}; }
+        std::string signature;
+        for (int lineNo = begin.line; lineNo <= end.line; ++lineNo) {
+            const size_t start = offsets[static_cast<size_t>(lineNo - 1)];
+            size_t lineEnd = static_cast<size_t>(lineNo) < offsets.size()
+                ? offsets[static_cast<size_t>(lineNo)] - 1 : content.size(); // exclude the trailing '\n'
+            while (lineEnd > start && content[lineEnd - 1] == '\r') { --lineEnd; } // Windows CRLF
+            const std::string_view line(content.data() + start, lineEnd - start);
+            const size_t first = lineNo == begin.line ? byteOffset(line, begin.column) : 0;
+            const size_t last  = lineNo == end.line   ? byteOffset(line, end.column)   : line.size();
+            if (first > last) {
+                return {};
+            }
+            // Trim layout whitespace at line boundaries only. In particular, do not
+            // collapse spaces inside default-value strings on the same line.
+            const auto fragment = line.substr(first, last - first);
+            const auto fragmentBegin = fragment.find_first_not_of(" \t");
+            if (fragmentBegin == std::string_view::npos) {
+                continue;
+            }
+            const auto fragmentEnd = fragment.find_last_not_of(" \t");
+            const auto trimmed = fragment.substr(fragmentBegin, fragmentEnd - fragmentBegin + 1);
+            // A wrapped parameter list must have the same spelling as an inline
+            // one: no space immediately after '(' or immediately before ')' / ','.
+            if (!signature.empty() && signature.back() != '('
+                && trimmed.front() != ')' && trimmed.front() != ',') {
+                signature += ' ';
+            }
+            signature += trimmed;
+        }
+        return signature;
+    };
+
+    // Fast path: locate the source buffer by path hint, avoiding a scan across all files.
+    if (!filePath.empty()) {
+        for (const auto &[path, content] : pkg->second->bufferCache) {
+            if (path != filePath && path.find(filePath) == std::string::npos) {
+                continue;
+            }
+            auto found = lineIdx->second.find(path);
+            if (found == lineIdx->second.end()) { continue; }
+            auto signature = sliceFrom(content, found->second);
+            if (!signature.empty() && signature.find(identifier) != std::string::npos) {
+                return signature;
             }
         }
     }
-    return comments;
+
+    // A package may span several .d files; positions are per-file, so pick the file whose
+    // sliced text actually contains the identifier.
+    for (const auto &cached : pkg->second->bufferCache) {
+        auto found = lineIdx->second.find(cached.first);
+        if (found == lineIdx->second.end()) { continue; }
+        auto signature = sliceFrom(cached.second, found->second);
+        if (!signature.empty() && signature.find(identifier) != std::string::npos) {
+            return signature;
+        }
+    }
+    return {};
 }
+
 // LCOV_EXCL_START
 void CjdIndexer::ReadCJDSource(const std::string &rootPath, const std::string &modulePath,
                                std::map<int, std::vector<std::string>> &fileMap, const std::string &parentPkg)
@@ -299,8 +381,10 @@ void CjdIndexer::Build()
     }
     isIndexing = true;
     LoadAllCJDResource();
+    BuildSourceLineIndex();
     ParsePackageDependencies();
     BuildCJDIndex();
+    pkgLineIndex.clear(); // no longer needed once the CJD index is built
     GenerateValidFile();
     isIndexing = false;
 }
@@ -329,7 +413,7 @@ void CjdIndexer::GenerateValidFile()
 {
     Trace::Log("Generate Cjd Index Valid Files Start");
     std::ofstream validFile;
-    validFile.open(Normalize(JoinPath(cjdCachePath, "valid.txt")));
+    validFile.open(FileStore::NormalizePath(JoinPath(cjdCachePath, "valid.txt")));
     if (!validFile.is_open()) {
         Trace::Log("Create cjd index files valid file failed");
     }

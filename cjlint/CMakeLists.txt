@@ -7,7 +7,7 @@ endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CJLINT_VERSION_STR "1.2.0-beta.rc2")
+set(CJLINT_VERSION_STR "1.3.0-alpha.08")
 set(CMAKE_CXX_FLAGS_RELEASE "-D_FORTIFY_SOURCE=2 -O2")
 
 if (CANGJIE_HOME)
@@ -80,6 +80,14 @@ endif ()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(COVERAGE_FLAG "Do coverage" OFF)
+
+if (RUNTIME_RPATH)
+    if (APPLE)
+        add_link_options("LINKER:-rpath,${RUNTIME_RPATH}")
+    elseif (NOT WIN32)
+        add_link_options("LINKER:--disable-new-dtags,-rpath=${RUNTIME_RPATH}")
+    endif ()
+endif ()
 
 add_compile_definitions(CANGJIE_AST2CHIR)
 add_compile_definitions(CANGJIE_CODEGEN_CJNATIVE_BACKEND)

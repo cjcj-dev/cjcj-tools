@@ -30,6 +30,7 @@ int main(int argc, char **argv)
         first.kind = Cangjie::AST::ASTKind::CLASS_DECL;
         first.name = "ProtocolAlpha";
         first.signature = first.name;
+        first.cjdSignature = "class ProtocolAlpha";
         first.scope = "protocol";
         first.location.fileUri = "/protocol/main.cj";
         first.location.begin = Cangjie::Position(1, 1, 1);
@@ -56,6 +57,7 @@ int main(int argc, char **argv)
         });
         Require(status == 0 && rows == 2, "normal rows delivered");
         Require(selected.id == first.id && !selected.idArray.empty(), "reference key preserved");
+        Require(selected.cjdSignature == first.cjdSignature, "CJD signature preserved with reference key");
         Ref ref{};
         ref.kind = RefKind::REFERENCE;
         ref.location = first.location;

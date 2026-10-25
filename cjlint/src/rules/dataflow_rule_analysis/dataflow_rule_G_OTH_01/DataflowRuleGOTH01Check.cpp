@@ -118,9 +118,9 @@ static std::string GetSpecialLogMsg(Ptr<CHIR::Apply> apply, const CHIR::ConstDom
     return GetSpecialLogMsg<CHIR::Apply>(apply, state);
 }
 
-static std::string GetSpecialLogMsg(Ptr<CHIR::TryApply> applyWithExcept, const CHIR::ConstDomain& state)
+static std::string GetSpecialLogMsg(Ptr<CHIR::TryApply> tryApply, const CHIR::ConstDomain& state)
 {
-    return GetSpecialLogMsg<CHIR::TryApply>(applyWithExcept, state);
+    return GetSpecialLogMsg<CHIR::TryApply>(tryApply, state);
 }
 // For 'SimpleLogger.log()', require the log level to be not equal to 0, where 0 indicates off.
 template <typename T> static bool GetLogLevel(Ptr<T> apply, int index)

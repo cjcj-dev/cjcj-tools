@@ -335,7 +335,7 @@ void DataflowRuleGCHK01Check::CheckStore(CHIR::Store* store, std::set<std::strin
  */
 void DataflowRuleGCHK01Check::CheckTuple(CHIR::Tuple* tuple, std::set<std::string>& taintedVars)
 {
-    auto operands = tuple->GetOperands();
+    auto operands = tuple->GetElementValues();
     auto iter = std::find_if(operands.begin(), operands.end(), [&taintedVars](auto& operand) {
         auto identifier = GetArgName(operand);
         return taintedVars.count(identifier) > 0;
@@ -422,8 +422,8 @@ void DataflowRuleGCHK01Check::CheckFuncBody(CHIR::Block& entryBlock)
                 }
                 if (expr->IsTerminator()) {
                     if (expr->GetExprKind() == CHIR::ExprKind::TRY_APPLY) {
-                        auto applyWithException = StaticCast<CHIR::TryApply*>(expr);
-                        CheckApply<CHIR::TryApply>(applyWithException, taintedVars);
+                        auto tryApply = StaticCast<CHIR::TryApply*>(expr);
+                        CheckApply<CHIR::TryApply>(tryApply, taintedVars);
                     }
                     for (auto newblock : expr->GetSuccessors()) {
                         visitBlock(newblock, taintedVars);

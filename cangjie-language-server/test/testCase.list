@@ -268,6 +268,7 @@
 {"completion":{"testFile":"LSP_Completion_ReExport_Alias_001.test","id":"9"}}
 {"completion":{"testFile":"LSP_Completion_OrgAutoComplete_001.test","id":"6"}}
 {"completion":{"testFile":"LSP_Completion_MultiImport_001.test","id":"9"}}
+{"completion":{"testFile":"LSP_Completion_ModifiedMultiImport_001.test","id":"9"}}
 {"completion":{"testFile":"LSP_Completion_script_dependencies_build_only_001.test","id":"9"}}
 
 {"diagnostic":{"testFile":"LSP_Diagnostic_Tuple_001.test"}}
@@ -346,6 +347,7 @@
 {"diagnostic":{"testFile":"LSP_Diagnostic_OverrideImplement_Enum_WithMembers.test"}}
 {"diagnostic":{"testFile":"LSP_Diagnostic_OverrideImplement_Enum_NoMembers.test"}}
 {"diagnostic":{"testFile":"LSP_Diagnostic_OverrideImplement_OnlyClass_001.test"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_MacroNoDiagnostic.test"}}
 
 {"documentHighlight":{"testFile":"LSP_DocumentHighlight_String_001.test","id":"7"}}
 {"documentHighlight":{"testFile":"LSP_DocumentHighlight_Interface_001.test","id":"9"}}
@@ -455,6 +457,7 @@
 {"documentHighlight":{"testFile":"LSP_DocumentHighlight_Func_Overload_001.test","id":"7"}}
 {"documentHighlight":{"testFile":"LSP_DocumentHighlight_Func_Overload_002.test","id":"7"}}
 {"documentHighlight":{"testFile":"LSP_DocumentHighlight_ExtendDocHighLight_001.test","id":"7"}}
+{"documentHighlight":{"testFile":"LSP_DocumentHighlight_NamedParameter_002.test","id":"5"}}
 
 {"goToDefinition":{"testFile":"LSP_GoToDefinition_String_001.test","id":"7"}}
 {"goToDefinition":{"testFile":"LSP_GoToDefinition_Interface_001.test","id":"110"}}
@@ -596,6 +599,7 @@
 {"goToDefinition":{"testFile":"LSP_GoToDefinition_Common_Specific_001.test","id":"9"}}
 {"goToDefinition":{"testFile":"LSP_GoToDefinition_Common_Specific_002.test","id":"9"}}
 {"goToDefinition":{"testFile":"LSP_GoToDefinition_script_dependencies_switch_root_001.test","id":"9"}}
+{"goToDefinition":{"testFile":"LSP_GoToDefinition_Common_Specific_003.test","id":"5"}}
 
 {"hover":{"testFile":"LSP_Hover_String_001.test","id":"7"}}
 {"hover":{"testFile":"LSP_Hover_Interface_001.test","id":"110"}}
@@ -879,6 +883,8 @@
 {"rename":{"testFile":"LSP_Rename_InterplationString_001.test","id":"9"}}
 {"rename":{"testFile":"LSP_Rename_InterplationString_002.test","id":"9"}}
 {"rename":{"testFile":"LSP_Rename_Common_Specific.test","id":"9"}}
+{"rename":{"testFile":"LSP_Rename_UnicodeInterpolatedString.test","preId":"5","id":"9"}}
+{"rename":{"testFile":"LSP_Rename_UnicodeInterpolatedString_EndBoundary.test","preId":"6","id":"9"}}
 
 {"semanticHighlight":{"testFile":"LSP_SemanticHighlight_String_001.test","id":"7"}}
 {"semanticHighlight":{"testFile":"LSP_SemanticHighlight_Interface_001.test","id":"110"}}
@@ -962,6 +968,7 @@
 {"semanticHighlight":{"testFile":"LSP_SemanticHighlight_Wildcard.test","id":"7"}}
 {"semanticHighlight":{"testFile":"LSP_SemanticHighlight_Unicode_Length.test","id":"7"}}
 {"semanticHighlight":{"testFile":"LSP_SemanticHighlight_ModuleCondition_001.test","id":"9"}}
+{"semanticHighlight":{"testFile":"LSP_SemanticHighlight_QualifiedTypeGeneric_001.test","id":"2"}}
 
 {"codeCov":{"testFile":"LSP_CodeCov_OnCompletion_001.test","id":"9"}}
 {"codeCov":{"testFile":"LSP_CodeCov_OnCompletion_002.test","id":"9"}}
@@ -1265,7 +1272,6 @@
 {"applyEdit":{"testFile":"IntroduceField_Apply_012.test","method":"workspace/applyEdit"}}
 {"applyEdit":{"testFile":"IntroduceField_Apply_013.test","method":"workspace/applyEdit"}}
 {"applyEdit":{"testFile":"IntroduceField_Apply_014.test","method":"workspace/applyEdit"}}
-{"applyEdit":{"testFile":"IntroduceField_Apply_015.test","method":"workspace/applyEdit"}}
 {"applyEdit":{"testFile":"IntroduceField_Apply_016.test","method":"workspace/applyEdit"}}
 {"applyEdit":{"testFile":"IntroduceField_Apply_017.test","method":"workspace/applyEdit"}}
 {"applyEdit":{"testFile":"IntroduceParameter_Apply_001.test","method":"workspace/applyEdit"}}
@@ -1294,3 +1300,25 @@
 {"applyEdit":{"testFile":"IntroduceParameter_Apply_023.test","method":"workspace/applyEdit"}}
 {"completion":{"testFile":"LSP_Completion_TryResource_Normal_001.test","id":"9"}}
 {"completion":{"testFile":"LSP_Completion_TryResource_Dot_001.test","id":"9"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_Module_Name_Conflict.test"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_Module_Name_Conflict_No_Relation.test"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_RawUnusedIdentifier_001.test"}}
+{"completion":{"testFile":"LSP_Completion_Paren_Assign_Dot.test","id":"9"}}
+{"completion":{"testFile":"LSP_Completion_Paren_Assign_Prefix.test","id":"9"}}
+{"completion":{"testFile":"LSP_Completion_Paren_As_Prefix.test","id":"9"}}
+{"completion":{"testFile":"LSP_Completion_Paren_Lambda_Shadow.test","id":"9"}}
+{"completion":{"testFile":"LSP_Completion_Paren_Nested_Return.test","id":"9"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_Unused_Default_001_UserDefaultUsed.test"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_Unused_Default_003_TrueUnusedParameter.test"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_Unused_Default_005_MultipleDefaults.test"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_Unused_Default_007_MethodGenericConstructor.test"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_Unused_Default_012_IncrementalAddDefault.test"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_Unused_Default_015_NamedScopeEnumAndCapture.test"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_Unused_Default_016_NamedScopeCrossFile.test"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_Unused_Default_017_NamedScopeMacro.test"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_Unused_Default_018_HelperReadsAndLocal.test"}}
+{"diagnostic":{"testFile":"LSP_Diagnostic_Tracked_DotCj_Delete.test"}}
+{"rename":{"testFile":"LSP_Rename_UnicodeControlFlow_Declaration.test","preId":"5","id":"9"}}
+{"rename":{"testFile":"LSP_Rename_UnicodeControlFlow_Reference.test","preId":"5","id":"9"}}
+{"rename":{"testFile":"LSP_Rename_UnicodeControlFlow_ASCII.test","preId":"5","id":"9"}}
+{"references":{"testFile":"LSP_References_UnicodeControlFlow.test","id":"9"}}

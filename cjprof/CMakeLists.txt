@@ -15,7 +15,7 @@ include(GNUInstallDirs)
 set(CJPROF_TARGET "native" CACHE STRING "Selected producer target")
 
 set(CMAKE_CXX_STANDARD 17)
-set(CJPROF_VERSION_STR "1.2.0-beta.rc2")
+set(CJPROF_VERSION_STR "1.3.0-alpha.08")
 set(STRIP_FLAG "-s")
 
 option(STRIP_LIB_PREFIX "Strip 'lib' prefix" OFF)

@@ -17,10 +17,6 @@ using namespace Cangjie::Format;
 
 namespace Cangjie::Format {
 const Region Region::wholeFile = Region(1, std::numeric_limits<int>::max(), true);
-}
-
-namespace {
-const int MIN_MUL_MEMBERS = 2;
 // this is a workaround for parser treating annotation and modifiers
 // as if they're outside declarations [begin, end] range
 Cangjie::Position GetBegin(Ptr<Node> n)
@@ -43,9 +39,40 @@ Cangjie::Position GetBegin(Ptr<Node> n)
     return begin;
 }
 
+bool IsVariableDecl(Ptr<Node> node)
+{
+    return node->astKind == ASTKind::VAR_DECL || node->astKind == ASTKind::VAR_WITH_PATTERN_DECL;
+}
+
+bool ASTToFormatSource::ShouldAddEmptyLineBetween(Ptr<Node> previous, Ptr<Node> current) const
+{
+    auto begin = GetBegin(current);
+    if (begin.line <= previous->end.line + 1) {
+        return false;
+    }
+
+    // Comments are restored with their original spacing by CommentHandler. Do not treat a comment line as
+    // an empty-line separator here: doing so makes the AST formatter and comment restoration add the same
+    // line break independently.
+    auto between = sm.GetContentBetween(previous->end, begin);
+    if (between.find("//") != std::string::npos || between.find("/*") != std::string::npos) {
+        return false;
+    }
+    return true;
+}
+} // namespace Cangjie::Format
+
+namespace {
+const int MIN_MUL_MEMBERS = 2;
+
 inline Cangjie::Position GetEnd(Ptr<Node> n)
 {
     return n->end;
+}
+
+bool IsWhitespaceOnly(const std::string& text)
+{
+    return std::all_of(text.begin(), text.end(), [](unsigned char ch) { return std::isspace(ch); });
 }
 } // namespace
 
@@ -71,7 +98,8 @@ void RegionFormattingTracker::ProcessPotentialCuttingPoint(Cangjie::Position& po
         (!cuttingPointInsideRegionEnd || cuttingPointInsideRegionEnd.value() < pos)) {
         cuttingPointInsideRegionEnd = pos;
     }
-    if ((pos > shouldFormatEnd) && (!cuttingPointOutsideRegionEnd || cuttingPointOutsideRegionEnd.value() < pos)) {
+    // Keep the nearest point after the requested range instead of the last enclosing node visited.
+    if ((pos > shouldFormatEnd) && (!cuttingPointOutsideRegionEnd || cuttingPointOutsideRegionEnd.value() > pos)) {
         cuttingPointOutsideRegionEnd = pos;
     }
 }
@@ -106,7 +134,7 @@ std::optional<std::pair<Cangjie::Position, Cangjie::Position>> RegionFormattingT
         auto point = cuttingPointInsideRegionBegin.value();
         auto prefix =
             sm.GetContentBetween(Position(point.fileID, shouldFormatBegin.line, shouldFormatBegin.column), point);
-        if (std::all_of(prefix.begin(), prefix.end(), isspace)) {
+        if (IsWhitespaceOnly(prefix)) {
             preciseFragmentBegin = cuttingPointInsideRegionBegin.value();
         }
     }
@@ -120,14 +148,10 @@ std::optional<std::pair<Cangjie::Position, Cangjie::Position>> RegionFormattingT
     if (cuttingPointOutsideRegionEnd) {
         preciseFragmentEnd = cuttingPointOutsideRegionEnd.value();
     }
-    // <4>, we can only cut here if there is no code after it on that line
+    // <4>: keep delimiters and enclosing syntax after the selected node untouched. This is important when a line
+    // range ends at an argument expression but the comma or closing delimiters belong to an enclosing node.
     if (cuttingPointInsideRegionEnd) {
-        auto point = cuttingPointInsideRegionEnd.value();
-        auto suffix =
-            sm.GetContentBetween(point, Position(point.fileID, shouldFormatBegin.line, shouldFormatBegin.column));
-        if (std::all_of(suffix.begin(), suffix.end(), isspace)) {
-            preciseFragmentEnd = cuttingPointInsideRegionEnd.value();
-        }
+        preciseFragmentEnd = cuttingPointInsideRegionEnd.value();
     }
 
     if (!preciseFragmentBegin || !preciseFragmentEnd) {
@@ -447,14 +471,14 @@ bool ASTToFormatSource::IsMultipleLine(const OwnedPtr<Cangjie::AST::Expr>& expr)
             if (argCallExpr == nullptr) {
                 return false;
             }
-            return IsMultipleLineCallExpr(*argCallExpr) || IsMultipleLineArg(argCallExpr->args);
+            return ShouldPreserveMultilineCallLayout(*argCallExpr) || IsMultipleLineArg(argCallExpr->args);
         }
         case ASTKind::ARRAY_LIT: {
             auto argArrayLit = As<ASTKind::ARRAY_LIT>(expr.get());
             if (argArrayLit == nullptr) {
                 return false;
             }
-            return IsMultipleLineArrayLit(argArrayLit->rightSquarePos.line, argArrayLit->children)
+            return ShouldPreserveMultilineArrayLayout(argArrayLit->rightSquarePos.line, argArrayLit->children)
                 || IsMultipleLineExpr(argArrayLit->children);
         }
         case ASTKind::TRAIL_CLOSURE_EXPR: {
@@ -474,7 +498,7 @@ bool ASTToFormatSource::IsMultipleLine(const OwnedPtr<Cangjie::AST::Expr>& expr)
     return false;
 }
 
-bool ASTToFormatSource::IsMultipleLineCallExpr(const Cangjie::AST::CallExpr& callExpr) const
+bool ASTToFormatSource::ShouldPreserveMultilineCallLayout(const Cangjie::AST::CallExpr& callExpr) const
 {
     if (callExpr.args.size() < MIN_MUL_MEMBERS) {
         return false;
@@ -487,7 +511,7 @@ bool ASTToFormatSource::IsMultipleLineCallExpr(const Cangjie::AST::CallExpr& cal
     return true;
 }
 
-bool ASTToFormatSource::IsMultipleLineArrayLit(const int& rightSquarePosLine,
+bool ASTToFormatSource::ShouldPreserveMultilineArrayLayout(const int& rightSquarePosLine,
     const std::vector<OwnedPtr<Expr>>& children) const
 {
     if (children.size() < MIN_MUL_MEMBERS) {

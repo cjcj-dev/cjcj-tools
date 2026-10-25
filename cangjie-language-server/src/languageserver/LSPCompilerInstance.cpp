@@ -321,13 +321,13 @@ void LSPCompilerInstance::ImportUsrCjo(const std::string &curModuleName,
     std::unordered_set<std::string> &visitedPackages)
 {
     if (usrCjoFileCacheMap.count(curModuleName) != 0) {
-        CjoCacheMap &cjoCacheMap = usrCjoFileCacheMap[curModuleName];
+        UsrCjoCacheMap &cjoCacheMap = usrCjoFileCacheMap[curModuleName];
         for (auto &item : cjoCacheMap) {
             if (visitedPackages.count(item.first) > 0) {
                 continue;
             }
             visitedPackages.insert(item.first);
-            importManager->SetPackageCjoCache(item.first, item.second);
+            importManager->SetPackageCjoCache(item.first, *item.second);
         }
     }
 }
@@ -381,7 +381,7 @@ void LSPCompilerInstance::IndexCjoToManager(
     }
     for (const auto &item : usrCjoFileCacheMap) {
         for (const auto &cjoCache : item.second) {
-            importManager->SetPackageCjoCache(cjoCache.first, cjoCache.second);
+            importManager->SetPackageCjoCache(cjoCache.first, *cjoCache.second);
         }
     }
 }
@@ -403,6 +403,11 @@ bool LSPCompilerInstance::CompileAfterParse(
     ImportCjoToManager(cjoManager, graph);
     (void)ImportPackage();
     if (!ark::CompilerCangjieProject::GetInstance()->isIdentical) {
+        return false;
+    }
+    ark::ModuleNameConflict conflict;
+    if (HasSourceModuleNameConflict(conflict)) {
+        Trace::Log("Skip semantic compilation for module with name conflict: ", conflict.moduleName);
         return false;
     }
     macroExpandSuccess = MacroExpand();
@@ -427,6 +432,25 @@ bool LSPCompilerInstance::CompileAfterParse(
     cjoManager->SetData(ark::CompilerCangjieProject::GetInstance()->GetRealPackageName(pkgNameForPath), cjoData);
     return changed;
 }
+
+bool LSPCompilerInstance::HasSourceModuleNameConflict(ark::ModuleNameConflict &conflict)
+{
+    if (!moduleManger) {
+        return false;
+    }
+    for (const auto &package : GetSourcePackages()) {
+        if (!package) {
+            continue;
+        }
+        for (const auto &file : package->files) {
+            if (file && moduleManger->GetModuleNameConflict(file->filePath, conflict)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // LCOV_EXCL_START
 std::vector<std::string> LSPCompilerInstance::GetTopologySort()
 {
@@ -555,24 +579,34 @@ void LSPCompilerInstance::UpdateUsrCjoFileCacheMap(
     std::string packageName;
     std::string fullPkgName;
     std::string requireCjoPath;
-    CjoCacheMap requiresMap = {};
+    UsrCjoCacheMap requiresMap = {};
     for (auto &require : cjoRequiresMap) {
         fullPkgName = require.first;
         requireCjoPath = require.second;
         if (!FileExist(requireCjoPath)) {
             continue;
         }
-        std::vector<uint8_t> tmpAST;
-        std::string failedReason;
-        if (ReadBinaryFileToBuffer(requireCjoPath, tmpAST, failedReason)) {
-            (void)requiresMap.emplace(fullPkgName, tmpAST);
-            cjoPathSet.insert(requireCjoPath);
-            auto curModuleName = ark::SplitFullPackage(fullPkgName).first;
-            packageName = ark::SplitFullPackage(fullPkgName).second;
-            cjoLibraryMap[curModuleName].emplace_back(packageName);
+        CjoBytesRef bytesRef;
+        auto it = cjoBytesByPath.find(requireCjoPath);
+        if (it != cjoBytesByPath.end()) {
+            bytesRef = it->second;
+        } else {
+            std::vector<uint8_t> tmpAST;
+            std::string failedReason;
+            if (ReadBinaryFileToBuffer(requireCjoPath, tmpAST, failedReason)) {
+                bytesRef = std::make_shared<const std::vector<uint8_t>>(std::move(tmpAST));
+                cjoBytesByPath.emplace(requireCjoPath, bytesRef);
+                cjoPathSet.insert(requireCjoPath);
+            } else {
+                continue;
+            }
         }
+        (void)requiresMap.emplace(fullPkgName, bytesRef);
+        auto curModuleName = ark::SplitFullPackage(fullPkgName).first;
+        packageName = ark::SplitFullPackage(fullPkgName).second;
+        cjoLibraryMap[curModuleName].emplace_back(packageName);
     }
-    usrCjoFileCacheMap.emplace(moduleName, requiresMap);
+    usrCjoFileCacheMap.emplace(moduleName, std::move(requiresMap));
 }
 
 void LSPCompilerInstance::MarkBrokenDecls(Package &pkg)

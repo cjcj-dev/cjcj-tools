@@ -539,6 +539,10 @@ bool CompilerCangjieProject::UpdateDependencies(
         for (const auto &file : packages[0]->files) {
             CheckPackageNameByAbsName(*file, fullPkgName, ci);
         }
+    } else {
+        for (const auto &file : packages[0]->files) {
+            ReportModuleNameConflict(*file);
+        }
     }
     return true;
 }
@@ -886,10 +890,11 @@ CompilerCangjieProject::NewPackageInfo CompilerCangjieProject::DeterminePkgNameA
 
     PkgType pkgType = PkgType::NORMAL;
     if (moduleInfo.isCommonSpecificModule) {
-        std::string sourceSetName = GetSourceSetNameByPath(absName);
+        std::string normalizedAbsName = FileStore::NormalizePath(absName);
+        std::string sourceSetName = GetSourceSetNameByPath(normalizedAbsName);
         if (!sourceSetName.empty()) {
             fullPkgName = sourceSetName + "-" + fullPkgName;
-            pkgType = GetPkgType(moduleInfo.modulePath, absName);
+            pkgType = GetPkgType(moduleInfo.modulePath, normalizedAbsName);
         }
     }
     return {fullPkgName, pkgType, pkgName == DEFAULT_PACKAGE_NAME};
@@ -1465,9 +1470,13 @@ void CompilerCangjieProject::InitOneModule(const ModuleInfo &moduleInfo)
             continue;
         }
         // init specific root path package
-        const auto &specificRootPath = Normalize(path);
-        const auto &sourceSetName = GetSourceSetNameByPath(specificRootPath);
-        std::string rootSpecificPkgName = sourceSetName + "-" + moduleInfo.moduleName;
+        const auto &specificRootPath = FileStore::NormalizePath(path);
+        const auto sourceSetName = moduleInfo.sourceSetNameByPath.find(specificRootPath);
+        if (sourceSetName == moduleInfo.sourceSetNameByPath.end()) {
+            Trace::Elog("can not find source-set name for path " + specificRootPath);
+            continue;
+        }
+        std::string rootSpecificPkgName = sourceSetName->second + "-" + moduleInfo.moduleName;
         (void)InitPackage(specificRootPath, rootSpecificPkgName, moduleInfo, PkgType::SPECIFIC);
 
         // init specific child path package
@@ -2243,6 +2252,7 @@ std::string CompilerCangjieProject::GetFilePathByID(const Node &node, unsigned i
 void CompilerCangjieProject::CheckPackageNameByAbsName(const File &needCheckedFile, const std::string &fullPackageName,
     const std::unique_ptr<LSPCompilerInstance> &ci)
 {
+    ReportModuleNameConflict(needCheckedFile);
     std::string realPkgName = GetRealPackageName(fullPackageName);
     (void)CheckPackageModifier(needCheckedFile, realPkgName);
 
@@ -2273,6 +2283,30 @@ void CompilerCangjieProject::CheckPackageNameByAbsName(const File &needCheckedFi
         ci->diag.DiagnoseRefactor(DiagKindRefactor::package_name_not_identical_lsp,
             errPos, expectedPkgName);
     }
+}
+
+void CompilerCangjieProject::ReportModuleNameConflict(const File &file) const
+{
+    if (!moduleManager || !file.package || !FileUtil::FileExist(file.filePath)) {
+        return;
+    }
+    ModuleNameConflict conflict;
+    if (!moduleManager->GetModuleNameConflict(file.filePath, conflict)) {
+        return;
+    }
+
+    DiagnosticToken diagnostic;
+    diagnostic.category = LSP_ERROR_CODE;
+    diagnostic.code = LSP_ERROR_CODE;
+    diagnostic.message = "modules with name '" + conflict.moduleName +
+        "' in dependency tree are conflicted. If existing dependency was updated in cjpm.toml then do `cjpm update`";
+    diagnostic.range = {
+        {file.package->begin.fileID, file.package->begin.line - 1, file.package->begin.column - 1},
+        {file.package->end.fileID, file.package->end.line - 1, file.package->end.column - 1}
+    };
+    diagnostic.severity = 1;
+    diagnostic.source = "Cangjie";
+    callback->UpdateDiagnostic(file.filePath, diagnostic);
 }
 
 bool CompilerCangjieProject::CheckPackageModifier(const File &needCheckedFile, const std::string &fullPackageName)
@@ -2603,8 +2637,10 @@ void CompilerCangjieProject::StorePackageCache(const std::string& pkgName)
         shard.reExportSymbols = &memIndex->pkgReExportSymsMap[pkgName];
         cacheManager->StoreIndexShard(pkgName, shardIdentifier, shard);
     }
-    cacheManager->Store(
-        pkgName, Digest(GetPathFromPkg(pkgName)), *cjoManager->GetData(pkgName));
+    auto cjoData = cjoManager->GetData(pkgName);
+    if (cjoData != nullptr) {
+        cacheManager->Store(pkgName, Digest(GetPathFromPkg(pkgName)), *cjoData);
+    }
 }
 // LCOV_EXCL_STOP
 void CompilerCangjieProject::BuildIndex(const std::unique_ptr<LSPCompilerInstance> &ci, bool isFullCompilation)
@@ -3045,48 +3081,18 @@ PkgType CompilerCangjieProject::GetPkgType(const std::string &modulePath, const 
 
 std::string CompilerCangjieProject::GetSourceSetNameByPath(const std::string &path)
 {
-    std::string realPath = Normalize(path);
-    ModuleInfo moduleInfo;
-    bool findModule = false;
+    std::string realPath = FileStore::NormalizePath(path);
     if (!moduleManager) {
         return "";
     }
     for (const auto &item : moduleManager->moduleInfoMap) {
-        std::vector<std::string> paths;
-        paths.emplace_back(item.second.commonSpecificPaths.first);
-        paths.insert(paths.end(),
-            item.second.commonSpecificPaths.second.begin(), item.second.commonSpecificPaths.second.end());
-        for (const auto &modulePath : paths) {
-            if (IsUnderPath(modulePath, realPath, true)) {
-                moduleInfo = item.second;
-                findModule = true;
-                break;
+        for (const auto &[sourceSetPath, sourceSetName] : item.second.sourceSetNameByPath) {
+            if (!sourceSetPath.empty() && IsUnderPath(sourceSetPath, realPath, true)) {
+                return sourceSetName;
             }
         }
-        if (findModule) {
-            break;
-        }
     }
-    if (!moduleInfo.isCommonSpecificModule || moduleInfo.sourceSetNames.empty()) {
-        return "";
-    }
-    std::vector<std::string> commonSpecificPaths;
-    // common package path is first
-    commonSpecificPaths.push_back(moduleInfo.commonSpecificPaths.first);
-    // specific package path
-    commonSpecificPaths.insert(commonSpecificPaths.end(),
-        moduleInfo.commonSpecificPaths.second.begin(), moduleInfo.commonSpecificPaths.second.end());
-    if (commonSpecificPaths.empty()) {
-        return "";
-    }
-    size_t index = 0;
-    for(const auto &commonSpecificPath : commonSpecificPaths) {
-        if (IsUnderPath(commonSpecificPath, realPath, true)) {
-            break;
-        }
-        index++;
-    }
-    return index < moduleInfo.sourceSetNames.size() ? moduleInfo.sourceSetNames[index] : "";
+    return "";
 }
 
 std::string CompilerCangjieProject::GetUpStreamSourceSetName(const std::string &fullPackageName)
@@ -3121,7 +3127,7 @@ std::string CompilerCangjieProject::GetFinalDownStreamFullPkgName(const std::str
         return pkgName;
     }
     std::vector<std::string> sourceSetGraph = GetCommonSpecificSourceSetGraph(realPkgName);
-    for (int i = sourceSetGraph.size() - 1; i >= 0; i--) {
+    for (int i = static_cast<int>(sourceSetGraph.size()) - 1; i >= 0; i--) {
         std::string sourceSetName = sourceSetGraph[i];
         std::string finalDownStreamFullPkgName = sourceSetName + "-" + realPkgName;
         if (pkgInfoMap.find(finalDownStreamFullPkgName) != pkgInfoMap.end()) {

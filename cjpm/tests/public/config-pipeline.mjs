@@ -17,8 +17,10 @@ for(const name of ['normal','large','bom']){
 const dir=work+'/normal';
 const lockCases={canonical:'version = 0\n[requires]\n',versionComment:'version = 0 # keep lock version\n[requires]\n',tableComment:'version = 0\n[requires] # dependencies\n',quotedKeys:'"version" = 0\n["requires"]\n',inlineRequires:'version = 0\nrequires = {}\n'};
 for(const [label,lock] of Object.entries(lockCases)){await write(dir+'/cjpm.lock',lock);await fs.writeFile(work+'/'+label+'.lock',lock);await run('lock-'+label,[cjpm,'build','-j','16'],dir);await check('lock-'+label+'-accepted',()=>assert.ok(true));}
-for(const [label,lock] of Object.entries({badVersion:'version = 1\n[requires]\n',duplicateVersion:'version = 0\nversion = 0\n[requires]\n',duplicateTable:'version = 0\n[requires]\n[requires]\n'})){
+// v1 is supported; the first unsupported version is now 2.
+for(const [label,lock] of Object.entries({badVersion:'version = 2\n[requires]\n',duplicateVersion:'version = 0\nversion = 0\n[requires]\n',duplicateTable:'version = 0\n[requires]\n[requires]\n'})){
  await write(dir+'/cjpm.lock',lock);await run('lock-'+label,[cjpm,'build','-j','16'],dir,1);await check('lock-'+label+'-rejected',()=>assert.ok(true));
+ const after=await fs.readFile(dir+'/cjpm.lock','utf8');await check('lock-'+label+'-preserved',()=>assert.equal(after,lock));
 }
 // Public error compatibility and importer diagnostics are covered by diagnostics.mjs.
 console.log('PASS public config/lock controls');

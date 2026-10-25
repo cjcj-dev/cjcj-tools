@@ -38,14 +38,16 @@ bool IsMultiImport(const std::vector<Cangjie::Token> &inputTokens)
     if (inputTokens.empty()) {
         return false;
     }
-    if (inputTokens.front().kind == Cangjie::TokenKind::IMPORT) {
-        auto preTokenKind = Cangjie::TokenKind::INIT;
-        for (auto &token : inputTokens) {
-            if (token.kind == Cangjie::TokenKind::LCURL && preTokenKind == Cangjie::TokenKind::DOT) {
-                return true;
-            }
-            preTokenKind = token.kind;
+    bool hasImport = false;
+    auto preTokenKind = Cangjie::TokenKind::INIT;
+    for (auto &token : inputTokens) {
+        if (token.kind == Cangjie::TokenKind::IMPORT) {
+            hasImport = true;
         }
+        if (hasImport && token.kind == Cangjie::TokenKind::LCURL && preTokenKind == Cangjie::TokenKind::DOT) {
+            return true;
+        }
+        preTokenKind = token.kind;
     }
     return false;
 }
@@ -55,7 +57,9 @@ std::string GetMultiImportPrefix(const std::vector<Cangjie::Token> &inputTokens)
     std::string prefix;
     std::vector<std::string> items;
     for (size_t i = 0; inputTokens[i].kind != Cangjie::TokenKind::LCURL; ++i) {
-        if (inputTokens[i].kind == Cangjie::TokenKind::IMPORT) {
+        if (inputTokens[i].kind == Cangjie::TokenKind::IMPORT ||
+            Utils::In(inputTokens[i].kind, {Cangjie::TokenKind::PUBLIC, Cangjie::TokenKind::PRIVATE,
+                                             Cangjie::TokenKind::PROTECTED, Cangjie::TokenKind::INTERNAL})) {
             continue;
         }
         if (inputTokens[i].kind == Cangjie::TokenKind::IDENTIFIER) {
@@ -577,7 +581,7 @@ IfImportInfo CompletionImpl::GetIfImportInfo(const ArkAST &input, Position pos, 
         return info;
     }
 
-    pos.column -= prefix.size();
+    pos.column -= static_cast<int>(prefix.size());
     std::string query = "_ = (" + std::to_string(input.semaCache->fileID) + ", " +
         std::to_string(pos.line) + ", " + std::to_string(pos.column) + ")";
 
@@ -712,7 +716,7 @@ void CompletionImpl::NamedParameterComplete(const ark::ArkAST &input, const Cang
         int totalParamCount = 0;
         for (const auto &pList : paramLists) {
             if (pList) {
-                totalParamCount += pList->params.size();
+                totalParamCount += static_cast<int>(pList->params.size());
             }
         }
 
@@ -956,14 +960,22 @@ bool CompletionImpl::IsPreambleComplete(const ArkAST &input,
                                         const TokenKind firstTokenKind,
                                         const int firstTokenIndexOnLine)
 {
-    bool keywordFlag = firstTokenKind == TokenKind::IMPORT || firstTokenKind == TokenKind::PACKAGE;
-    if (keywordFlag) {
+    if (firstTokenKind == TokenKind::PACKAGE) {
         return true;
     }
-    if (firstTokenKind == TokenKind::PUBLIC &&
-        static_cast<unsigned int>(firstTokenIndexOnLine + 1) < input.tokens.size() &&
-        input.tokens[firstTokenIndexOnLine + 1].kind == TokenKind::IMPORT) {
-        return true;
+
+    if (firstTokenIndexOnLine < 0 || static_cast<size_t>(firstTokenIndexOnLine) >= input.tokens.size()) {
+        return false;
+    }
+    const auto line = input.tokens[static_cast<size_t>(firstTokenIndexOnLine)].Begin().line;
+    for (size_t index = static_cast<size_t>(firstTokenIndexOnLine); index < input.tokens.size(); ++index) {
+        const auto &token = input.tokens[index];
+        if (token.Begin().line != line) {
+            break;
+        }
+        if (token.kind == TokenKind::IMPORT) {
+            return true;
+        }
     }
     return false;
 }

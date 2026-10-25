@@ -442,7 +442,7 @@ void DataflowRuleVAR01Check::CheckBasedOnCHIRFunc(CHIR::BlockGroup& body, ClassM
         if (expr.GetExprKind() == CHIR::ExprKind::STORE_ELEMENT_REF) {
             auto storeElementRef = StaticCast<CHIR::StoreElementRef*>(&expr);
             CheckMemberVar(storeElementRef, memberVarMap);
-	        IncreaseAssignCountByLocation(storeElementRef->GetBase(), localVarAssignCountMap);
+            IncreaseAssignCountByLocation(storeElementRef->GetBase(), localVarAssignCountMap);
         }
         return CHIR::VisitResult::CONTINUE;
     });

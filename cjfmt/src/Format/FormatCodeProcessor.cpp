@@ -574,10 +574,147 @@ private:
 };
 } // namespace
 
+namespace {
+constexpr char UTF8_BOM[] = "\xEF\xBB\xBF";
+
+bool HasUtf8Bom(const std::string& text)
+{
+    return text.size() >= sizeof(UTF8_BOM) - 1 && text.compare(0, sizeof(UTF8_BOM) - 1, UTF8_BOM) == 0;
+}
+
+std::string StripUtf8Bom(const std::string& text)
+{
+    return HasUtf8Bom(text) ? text.substr(sizeof(UTF8_BOM) - 1) : text;
+}
+
+std::string RestoreUtf8Bom(std::string text, bool hasBom)
+{
+    if (hasBom) {
+        text.insert(0, UTF8_BOM, sizeof(UTF8_BOM) - 1);
+    }
+    return text;
+}
+
+size_t GetLineStartOffset(const std::string& text, int line)
+{
+    if (line <= 1) {
+        return 0;
+    }
+    size_t offset = 0;
+    for (int currentLine = 1; currentLine < line; ++currentLine) {
+        offset = text.find('\n', offset);
+        if (offset == std::string::npos) {
+            return text.size();
+        }
+        ++offset;
+    }
+    return offset;
+}
+
+ByteRange GetRequestedByteRange(const std::string& text, const Region& region)
+{
+    if (region.isWholeFile) {
+        return {0, text.size()};
+    }
+    // Region line numbers are inclusive, while ByteRange is half-open. Using the next line start also includes the
+    // selected line's terminator when one exists.
+    auto end = region.endLine == std::numeric_limits<int>::max() ? text.size() :
+        GetLineStartOffset(text, region.endLine + 1);
+    return {GetLineStartOffset(text, region.startLine), end};
+}
+
+TextEdit BuildTextEdit(const std::string& original, const std::string& formatted)
+{
+    // Remove the common prefix and suffix so callers receive one minimal contiguous replacement.
+    size_t prefixLength = 0;
+    auto commonLength = std::min(original.size(), formatted.size());
+    while (prefixLength < commonLength && original[prefixLength] == formatted[prefixLength]) {
+        ++prefixLength;
+    }
+    auto isUtf8Continuation = [](char ch) { return (static_cast<unsigned char>(ch) & 0xc0) == 0x80; };
+    // A byte-wise mismatch may land inside a UTF-8 code point. Expand the edit to the code point boundary.
+    while (prefixLength > 0 &&
+        ((prefixLength < original.size() && isUtf8Continuation(original[prefixLength])) ||
+            (prefixLength < formatted.size() && isUtf8Continuation(formatted[prefixLength])))) {
+        --prefixLength;
+    }
+
+    size_t suffixLength = 0;
+    while (suffixLength < original.size() - prefixLength && suffixLength < formatted.size() - prefixLength &&
+        original[original.size() - suffixLength - 1] == formatted[formatted.size() - suffixLength - 1]) {
+        ++suffixLength;
+    }
+    // Discard any partial code point from the common suffix; complete trailing code points remain shared.
+    while (suffixLength > 0 &&
+        (isUtf8Continuation(original[original.size() - suffixLength]) ||
+            isUtf8Continuation(formatted[formatted.size() - suffixLength]))) {
+        --suffixLength;
+    }
+
+    auto originalEnd = original.size() - suffixLength;
+    auto formattedEnd = formatted.size() - suffixLength;
+    return {{prefixLength, originalEnd}, formatted.substr(prefixLength, formattedEnd - prefixLength)};
+}
+
+size_t MapOffset(size_t offset, const TextEdit& edit, bool isRangeEnd)
+{
+    if (offset < edit.range.start) {
+        return offset;
+    }
+    if (offset == edit.range.start) {
+        // Starts use left affinity and ends use right affinity, so an insertion at the selected range end is included.
+        bool isInsertion = edit.range.start == edit.range.end;
+        return isInsertion && isRangeEnd ? offset + edit.replacement.size() : offset;
+    }
+    if (offset < edit.range.end) {
+        return isRangeEnd ? edit.range.start + edit.replacement.size() : edit.range.start;
+    }
+
+    auto removedLength = edit.range.end - edit.range.start;
+    if (edit.replacement.size() >= removedLength) {
+        return offset + edit.replacement.size() - removedLength;
+    }
+    return offset - (removedLength - edit.replacement.size());
+}
+
+ByteRange MapRange(const ByteRange& range, const TextEdit& edit)
+{
+    return {MapOffset(range.start, edit, false), MapOffset(range.end, edit, true)};
+}
+} // namespace
+
+std::optional<FormatResult> FormatTextWithEdits(
+    const std::string& rawCode, const std::string& filepath, const Region region)
+{
+    // UTF-8 BOM is a file signature, not source text. Keep it outside the lexer/parser pipeline and restore it
+    // on the complete formatted result, as formatters such as Prettier do.
+    bool hasBom = HasUtf8Bom(rawCode);
+    auto sourceCode = StripUtf8Bom(rawCode);
+    auto formatCode = FormatCodeProcessor(sourceCode, filepath, region);
+    auto formatted = formatCode.Run();
+    if (!formatted) {
+        return std::nullopt;
+    }
+
+    FormatResult result;
+    result.formattedText = RestoreUtf8Bom(std::move(formatted.value()), hasBom);
+    result.requestedRange = GetRequestedByteRange(rawCode, region);
+    result.formattedRange = result.requestedRange;
+    if (result.formattedText != rawCode) {
+        auto edit = BuildTextEdit(rawCode, result.formattedText);
+        result.formattedRange = MapRange(result.requestedRange, edit);
+        result.edits.emplace_back(std::move(edit));
+    }
+    return result;
+}
+
 std::optional<std::string> FormatText(const std::string& rawCode, const std::string& filepath, const Region region)
 {
-    auto formatCode = FormatCodeProcessor(rawCode, filepath, region);
-    return formatCode.Run();
+    auto result = FormatTextWithEdits(rawCode, filepath, region);
+    if (!result) {
+        return std::nullopt;
+    }
+    return std::move(result->formattedText);
 }
 
 bool FormatFile(std::string& rawCode, const std::string& filepath, std::string& sourceFormat, Region regionToFormat)

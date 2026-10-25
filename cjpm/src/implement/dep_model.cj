@@ -7,6 +7,7 @@
 package cjpm.implement
 
 import std.collection.*
+import std.collection.concurrent.*
 import std.sync.*
 import std.fs.*
 import std.sort.*
@@ -54,8 +55,6 @@ class DepModel {
     public var jsonMap: HashMap<String, ArrayList<String>> = HashMap<String, ArrayList<String>>()
     let packageMtx: Mutex = Mutex()
     let errPrintMtx: Mutex = Mutex()
-    let scanCjoMtx: Mutex = Mutex()
-    let scanPkgMtx: Mutex = Mutex()
     // Collect zero indegree packages
     var readyPkgs: ArrayList<String> = ArrayList<String>()
     public var targetMacroPkgs: HashSet<String> = HashSet<String>() // used by cross compile
@@ -67,17 +66,20 @@ class DepModel {
     // Sub package map to super package
     public var superPkgSubMap: HashMap<String, String> = HashMap<String, String>()
 
-    // combined entry signal, populated during collection, consumed by dealWithSuperPkg.
+    // combined entry signal, populated during collection, consumed by applySuperPkgCombineState.
     // Non-workspace: whether the root module explicitly configured combined.
     // Workspace: canonical paths of currentMembers that explicitly configured combined.
     public var rootConfiguredCombined: Bool = false
     public let combinedConfiguredMembers: HashSet<String> = HashSet<String>()
     // Binary dependencies record
-    public var binDepCacheMap: HashMap<String, RequiresPackages> = HashMap<String, RequiresPackages>()
+    public var binDepCacheMap: ConcurrentHashMap<String, RequiresPackages> =
+        ConcurrentHashMap<String, RequiresPackages>()
     // Package dependencies record (pkg without test)
-    public var pkgBuildDepCacheMap: HashMap<String, RequiresPackages> = HashMap<String, RequiresPackages>()
+    public var pkgBuildDepCacheMap: ConcurrentHashMap<String, RequiresPackages> =
+        ConcurrentHashMap<String, RequiresPackages>()
     // Package dependencies record (pkg with test)
-    public var pkgTestDepCacheMap: HashMap<String, RequiresPackages> = HashMap<String, RequiresPackages>()
+    public var pkgTestDepCacheMap: ConcurrentHashMap<String, RequiresPackages> =
+        ConcurrentHashMap<String, RequiresPackages>()
 
     public init(globalConfig: GlobalConfig) {
         this.globalConfig = globalConfig
@@ -111,22 +113,17 @@ class DepModel {
 
         // move repo-deps from cjpm.lock into engine
         this.depAnalysisEngine.recordLock(locked)
+        this.lockedMap = locked
 
-        // first process locked dependencies as if they are directly required.
         this.globalConfig.scriptList = ArrayList<ScriptConfig>()
 
         if (!COMMON_INFO.inWorkspace) {
             this.globalConfig.modulePath = this.globalConfig.rootPath
-            this.lockedMap = locked
             if (this.depCheck(path, "", "", None, rootTomlDocument: rootTomlDocument) == FAILED_BUILD_CHECK_RESULT) {
                 return FAILED_BUILD_CHECK_RESULT
             }
         } else {
             this.replaceMap = COMMON_INFO.replaceDeps
-            let (flag, _) = this.processDependencyModule(locked, "", "", true)
-            if (!flag) {
-                return FAILED_BUILD_CHECK_RESULT
-            }
         }
 
         if (!COMMON_INFO.memberModule.isEmpty()) {
@@ -270,28 +267,6 @@ class DepModel {
         return true
     }
 
-    func isProjectCombineCheck(tomlInfo: TomlInfo): Bool {
-        if (tomlInfo.pkg.packageConfiguration.contains(this.globalConfig.rootName) &&
-            tomlInfo.pkg.packageConfiguration[this.globalConfig.rootName].combineAllDeps) {
-            if (tomlInfo.profile.build.combined.isEmpty()) {
-                eprintln("Error: field " +
-                    "'package.package-configuration.${this.globalConfig.rootName}.combine-all-deps = true' " +
-                    "is invalid when field 'profile.build.combined' is empty")
-                return false
-            }
-            if (this.globalConfig.isForScript) {
-                println("Warning: module '${tomlInfo.pkg.name}' will not be compiled as " +
-                    "combine-all-deps module when depended by build.cj")
-            } else if (this.globalConfig.isTest) {
-                println("Warning: module '${tomlInfo.pkg.name}' will not be compiled as " +
-                    "combine-all-deps module for test")
-            } else {
-                this.globalConfig.isProjectCombine = true
-            }
-        }
-        return true
-    }
-
     func depCheck(path: String, preName: String, prePath: String, requires: ?DepInfo,
         rootTomlDocument!: ?ModuleTomlDocument = None): BuildCheckResult {
         // Check the path exists.
@@ -324,11 +299,7 @@ class DepModel {
                 }
             }
 
-            if (!isProjectCombineCheck(tomlInfo)) {
-                return FAILED_BUILD_CHECK_RESULT
-            }
-            let (flag, _) = this.processDependencyModule(this.lockedMap, "", "", true)
-            if (!flag) {
+            if (!checkProjectCombineAtDepResolve(this.globalConfig, tomlInfo)) {
                 return FAILED_BUILD_CHECK_RESULT
             }
         }
@@ -337,13 +308,11 @@ class DepModel {
             if (this.globalConfig.isForScript) {
                 println("Warning: module '${tomlInfo.pkg.name}' will not be compiled as " +
                     "combined module when depended by build.cj")
-            } else {
-                if (!COMMON_INFO.inWorkspace && (this.globalConfig.rootName == tomlInfo.pkg.name)) {
-                    this.rootConfiguredCombined = true
-                } else if (COMMON_INFO.inWorkspace &&
-                    COMMON_INFO.currentMembers.contains(getCanonicalPath(tomlInfo.pkg.path))) {
-                    this.combinedConfiguredMembers.add(getCanonicalPath(tomlInfo.pkg.path))
-                }
+            } else if (!COMMON_INFO.inWorkspace && (this.globalConfig.rootName == tomlInfo.pkg.name)) {
+                this.rootConfiguredCombined = true
+            } else if (COMMON_INFO.inWorkspace &&
+                COMMON_INFO.currentMembers.contains(getCanonicalPath(tomlInfo.pkg.path))) {
+                this.combinedConfiguredMembers.add(getCanonicalPath(tomlInfo.pkg.path))
             }
         }
 
@@ -773,8 +742,10 @@ class DepModel {
     // Get package information by the '.cjo' file.
     func scanCjoInfo(cjoPath: String, isTest: Bool): ?RequiresPackages {
         let timeStamp = FileInfo(cjoPath).lastModificationTime.toUnixTimeStamp().toSeconds()
-        if (this.binDepCacheMap.contains(cjoPath) && (timeStamp == this.binDepCacheMap[cjoPath].timeStamp)) {
-            return this.binDepCacheMap[cjoPath]
+        if (let Some(cached) <- this.binDepCacheMap.get(cjoPath)) {
+            if (timeStamp == cached.timeStamp) {
+                return cached
+            }
         }
 
         let arguments = ArrayList<String>(["--scan-dependency", cjoPath])
@@ -809,9 +780,7 @@ class DepModel {
 
         p.timeStamp = timeStamp
 
-        synchronized (this.scanCjoMtx) {
-            this.binDepCacheMap.add(cjoPath, p)
-        }
+        this.binDepCacheMap.add(cjoPath, p)
 
         return p
     }
@@ -878,21 +847,23 @@ class DepModel {
         }
         let pkgPath = pkgSource.allPaths[0]
         let pkgPathString = pkgPath.toString()
-        if (!isTest && this.pkgBuildDepCacheMap.contains(pkgPathString) && (timeStamp == this.pkgBuildDepCacheMap[pkgPathString].timeStamp)) {
-            return Ok(this.pkgBuildDepCacheMap[pkgPathString])
-        } else if (isTest && this.pkgTestDepCacheMap.contains(pkgPathString) && (timeStamp == this.pkgTestDepCacheMap[pkgPathString].timeStamp)) {
-            return Ok(this.pkgTestDepCacheMap[pkgPathString])
+        if (let Some(cached) <- if (isTest) {
+            this.pkgTestDepCacheMap.get(pkgPathString)
+        } else {
+            this.pkgBuildDepCacheMap.get(pkgPathString)
+        }) {
+            if (timeStamp == cached.timeStamp) {
+                return Ok(cached)
+            }
         }
         // update pkgDepCacheMap
         scanDependency(pkgPath, isTest: isTest, compileOptions: compileOptions).inspect { depRes =>
             var dep = depRes
             dep.timeStamp = timeStamp
-            synchronized (this.scanPkgMtx) {
-                if (isTest) {
-                    this.pkgTestDepCacheMap.add(pkgPathString, dep)
-                } else {
-                    this.pkgBuildDepCacheMap.add(pkgPathString, dep)
-                }
+            if (isTest) {
+                this.pkgTestDepCacheMap.add(pkgPathString, dep)
+            } else {
+                this.pkgBuildDepCacheMap.add(pkgPathString, dep)
             }
         }.mapErr { e => [ e ] }
     }
@@ -902,26 +873,32 @@ class DepModel {
             propagatedFeatures[name] = HashSet()
         }
 
-        let target = if (crossCompileTarget.isEmpty()) { targetConfigName } else { crossCompileTarget }
+        let target = getCompileTarget()
         let triple = Triple.fromString(target).getOrThrow { err =>
             CliFailError("Error: invalid target '${target}': ${err}")
         }
-        for (name in this.depAnalysisEngine.finalDepMap.keys()) {
-            let alwaysEnabledFeatures = verifiedModuleMap[name].alwaysEnabledFeatures
-            let mapping = verifiedModuleMap[name].mapping
-            let features = FeatureDeducer(enabled: !this.globalConfig.noFeatureDeduce)
-                .addFeature(this.globalConfig.verifiedEnabledFeatures)
-                .addFeature(alwaysEnabledFeatures)
-                .deduceTargetFeatures(triple)
-                .setFeatureMapping(mapping)
-                .collect()
+        var changed = true
+        while (changed) {
+            changed = false
+            for (name in this.depAnalysisEngine.finalDepMap.keys()) {
+                let alwaysEnabledFeatures = verifiedModuleMap[name].alwaysEnabledFeatures
+                let mapping = verifiedModuleMap[name].mapping
+                let features = FeatureDeducer(enabled: !this.globalConfig.noFeatureDeduce)
+                    .addFeature(this.globalConfig.verifiedEnabledFeatures)
+                    .addFeature(alwaysEnabledFeatures)
+                    .addFeature(propagatedFeatures[name].toArray())
+                    .deduceTargetFeatures(triple)
+                    .setFeatureMapping(mapping)
+                    .collect()
 
-            propagatedFeatures[name].add(all: features)
-            for (feature in features) {
-                if (
-                    let Some(fname) <- feature.depName &&
-                    let Some(featureset) <- propagatedFeatures.get(fname)
-                ) { featureset.add(feature) }
+                propagatedFeatures[name].add(all: features)
+                for (feature in features) {
+                    if (
+                        let Some(fname) <- feature.depName &&
+                        let Some(featureSet) <- propagatedFeatures.get(fname) &&
+                        featureSet.add(feature)
+                    ) { changed = true }
+                }
             }
         }
     }
@@ -938,9 +915,12 @@ class DepModel {
 
         match (dm) {
             case data: DataModelStruct =>
-                this.binDepCacheMap = HashMap<String, RequiresPackages>.deserialize(data.get("bin"))
-                this.pkgBuildDepCacheMap = HashMap<String, RequiresPackages>.deserialize(data.get("pkg-build"))
-                this.pkgTestDepCacheMap = HashMap<String, RequiresPackages>.deserialize(data.get("pkg-test"))
+                this.binDepCacheMap = ConcurrentHashMap(
+                    HashMap<String, RequiresPackages>.deserialize(data.get("bin")))
+                this.pkgBuildDepCacheMap = ConcurrentHashMap(
+                    HashMap<String, RequiresPackages>.deserialize(data.get("pkg-build")))
+                this.pkgTestDepCacheMap = ConcurrentHashMap(
+                    HashMap<String, RequiresPackages>.deserialize(data.get("pkg-test")))
 
             case _ =>
                 throw Exception("this data is not DataModelStruct")
@@ -953,9 +933,12 @@ class DepModel {
     func updateDepIncrementalCache(): Unit {
         let binCachePath = Path(this.globalConfig.targetDir).join(DEP_INCREMENTAL_CACHE).toString()
         let dmCacheRoot = DataModelStruct()
-            .add(field<HashMap<String, RequiresPackages>>("bin", this.binDepCacheMap))
-            .add(field<HashMap<String, RequiresPackages>>("pkg-build", this.pkgBuildDepCacheMap))
-            .add(field<HashMap<String, RequiresPackages>>("pkg-test", this.pkgTestDepCacheMap))
+            .add(field<HashMap<String, RequiresPackages>>(
+                "bin", this.binDepCacheMap |> collectHashMap))
+            .add(field<HashMap<String, RequiresPackages>>(
+                "pkg-build", this.pkgBuildDepCacheMap |> collectHashMap))
+            .add(field<HashMap<String, RequiresPackages>>(
+                "pkg-test", this.pkgTestDepCacheMap |> collectHashMap))
         let cacheString = dmCacheRoot.toJson().toJsonString()
         createAndWriteFile(binCachePath, cacheString)
         return
@@ -1039,6 +1022,17 @@ class DepModel {
         var buildCheckFlag = true
         var mockUsed = false
         for ((name, v) in requires) {
+            // Apply pins only to dependencies reached in this resolution scope.
+            if (v.isGitDep() && let Some(locked) <- this.lockedMap.get(name)) {
+                let (_, error) = locked.isAlternative(v)
+                if (error.isEmpty()) {
+                    v.commitId = locked.commitId
+                    v.outputType = v.outputType ?? locked.outputType
+                } else {
+                    eprintln("Error: locked dependency '${name}' changed; run 'cjpm update'")
+                    return FAILED_BUILD_CHECK_RESULT
+                }
+            }
             // convert to absolute path for future comparisons
             if (let Some(vpath) <- v.path) {
                 v.path = getPath(prePath, vpath)
@@ -1053,7 +1047,7 @@ class DepModel {
             }
 
             var finalDepInfo: DepInfo = v
-            if (let Some(version) <- finalDepInfo.version) {
+            if (finalDepInfo.isCenterRepoDep()) {
                 // continue if replaced
                 if (this.replaceMap.contains(name)) {
                     finalDepInfo = this.replaceMap[name]
@@ -1477,7 +1471,7 @@ func getActualName(pkgPath: String, rootPkgName: String): String {
 
 func constructSource(modulePath: String, srcDir: String, sourceSets: SourceLocations, deducer: FeatureDeducer, enabledFeatures: Array<Feature>, _globalFeatures: HashSet<Feature>): Result<(CJMPSource, HashSet<Feature>), String> {
     var _deducer = deducer
-    let target = if (crossCompileTarget.isEmpty()) { targetConfigName } else { crossCompileTarget }
+    let target = getCompileTarget()
     if (let Some(triple) <- Triple.fromString(target).ok) {
         _deducer = _deducer.deduceTargetFeatures(triple)
     }
@@ -1491,7 +1485,7 @@ func constructSource(modulePath: String, srcDir: String, sourceSets: SourceLocat
     if (sourceSets.isEmpty) {
         return Ok((CJMPSource(modulePath, srcDir), localFeatures))
     } else {
-        return sourceSets.selectSourceSets(modulePath, localFeatures, globalFeatures).map { it => (it, localFeatures) }
+        return sourceSets.selectSourceSets(modulePath, globalFeatures).map { it => (it, localFeatures) }
     }
 }
 

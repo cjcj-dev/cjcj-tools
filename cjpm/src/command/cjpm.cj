@@ -39,6 +39,8 @@ Use "cjpm [subcommand] --help" for more information about a command."""
 public open class Handle {
     public var cmdName: String = ""
     public var arguments: Array<String> = Array<String>()
+    public var shortOptionSpec: String = ""
+    public var longOptionSpecs: Array<String> = Array<String>()
 
     public open func handleCommand(): Bool {
         return false
@@ -48,7 +50,25 @@ public open class Handle {
         if (this.arguments.isEmpty()) {
             return false
         }
-        return this.arguments.contains("-h") || this.arguments.contains("--help")
+
+        let helpLongOptionSpecs = ArrayList<String>()
+        helpLongOptionSpecs.add(all: this.longOptionSpecs)
+        helpLongOptionSpecs.add("help")
+
+        // ArgOpt keeps parsing options after "--", but those arguments belong
+        // to the command being run rather than to cjpm. Restrict help detection
+        // to the prefix before "--" so a pass-through "--help" cannot be
+        // confused with a preceding option value such as "--run-args -h".
+        let helpArguments = ArrayList<String>()
+        for (arg in this.arguments) {
+            if (arg == "--") {
+                break
+            }
+            helpArguments.add(arg)
+        }
+        let (argMap, _) = getParseOption(
+            helpArguments.toArray(), "${this.shortOptionSpec}h", helpLongOptionSpecs.toArray())
+        return getBoolOption(argMap, "-h", "--help")
     }
 
     public open func printHelp(): Unit {
@@ -66,7 +86,7 @@ public open class Handle {
 
 // CpmCommand represents the base command when called without any subcommands
 class CpmCommand <: Handle {
-    private let CJPM_VERSION: String = "Cangjie Project Manager: 1.2.0-beta.rc2"
+    private let CJPM_VERSION: String = "Cangjie Project Manager: 1.3.0-alpha.08"
 
     init(args: Array<String>) {
         this.arguments = args
