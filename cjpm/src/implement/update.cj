@@ -19,11 +19,7 @@ var UPDATE_DEPOT = Depot()
 
 // Command update implement.
 public func doUpdate(): Bool {
-    // first fo all, force-update all index
-    if (!updateIndex()) {
-        return false
-    }
-
+    // main prepares the index before resolving either scripts or ordinary dependencies.
     // initialize dep-analysis engine
     UPDATE_ANALYSIS_ENGINE.isTest = true
     UPDATE_ANALYSIS_ENGINE.refreshCache = true
@@ -215,7 +211,7 @@ func checkGitLocalDep(name: String, curInfo: DepInfo, newInfo: DepInfo): Bool {
     return UPDATE_ANALYSIS_ENGINE.finalDepMap[name].sourcePath == newInfo.path.getOrDefault({=> ""})
 }
 
-func updateIndex(): Bool {
+public func updateIndex(): Bool {
     if (!UPDATE_DEPOT.loadConfiguration(isError: false)) {
         return true
     }

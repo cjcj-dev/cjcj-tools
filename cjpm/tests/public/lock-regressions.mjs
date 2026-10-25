@@ -1,6 +1,6 @@
 #!/usr/bin/env zx
 // Run only on an allocated build host with an independently installed cjpm.
-// Usage: zx lock-regressions.mjs /absolute/install/cjpm /fresh/private/work registry|scripts|workspace
+// Usage: zx lock-regressions.mjs /absolute/install/cjpm /fresh/private/work registry|scripts|workspace|lifecycle
 import { $ } from 'zx';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 
 const [cjpm, work, mode] = process.argv.slice(2);
 assert.ok(path.isAbsolute(cjpm) && path.isAbsolute(work));
-assert.ok(['registry', 'scripts', 'workspace'].includes(mode));
+assert.ok(['registry', 'scripts', 'workspace', 'lifecycle'].includes(mode));
 await fs.mkdir(work, { recursive: false });
 const commands = [], checks = [];
 async function write(file, text) {
@@ -153,11 +153,25 @@ async function registry() {
       assert.match(scriptFailure.stderr, /locked registry source\/checksum/);
       assert.equal(await read(scriptLock), invalidScriptLock);
     });
+    await write(scriptLock, firstScriptLock);
+    // Keep the warm A index: a successful B update must refresh it before the
+    // pre-script asks for B's same-name/same-version artifact.
     await write(path.join(scriptDir, 'cangjie-repo.toml'), scriptConfig('b'));
+    const updateRequestStart = requests.length;
     await run('registry-script-update', [cjpm, 'update'], scriptDir);
     await check('registry-script-update-consumer', async () => {
       assert.equal(await read(path.join(scriptDir, 'script-result')), '22');
       assert.ok((await read(scriptLock)).includes(`registry+${base}/b`));
+      assert.ok((await read(scriptLock)).includes(`sha256:${artifacts.b.index.sha256sum}`));
+      const updateRequests = requests.slice(updateRequestStart);
+      const index = updateRequests.findIndex(url => url.startsWith('/b/index/') && url.endsWith('/regdep'));
+      const artifact = updateRequests.indexOf('/b/pkg/regdep/1.0.0');
+      assert.ok(index >= 0 && artifact > index, JSON.stringify(updateRequests));
+    });
+    await run('registry-script-update-control', [cjpm, 'build', '-j', '2'], control);
+    await run('registry-script-update-reentry', [cjpm, 'check'], scriptDir);
+    await check('registry-script-update-reentry-pinned', async () => {
+      assert.equal(await read(path.join(scriptDir, 'script-result')), '22');
     });
   } finally {
     await write(path.join(work, 'http-requests.json'), JSON.stringify(requests, null, 2));
@@ -306,5 +320,99 @@ async function workspace() {
   });
 }
 
-await ({ registry, scripts, workspace })[mode]();
+async function lifecycle() {
+  const f = await scriptFixture(), dir = path.join(work, 'consumer');
+  // Build the real app before introducing its build script. Keep nonempty
+  // ordinary metadata to verify that final script writes preserve requires.
+  const ordinary = `[dependencies]\nsdep = { git = "${f.repo}", branch = "selected" }\n`;
+  await consumer(dir, ordinary);
+  await write(path.join(dir, 'src/main.cj'), 'package consumer\nimport std.env.*\nimport std.fs.*\nmain(): Int64 { File.writeTo("app-result", "ran".toArray()); return if (getCommandLine().contains("--fail")) { 9 } else { 0 } }\n');
+  await run('lifecycle-build-app', [cjpm, 'build', '--skip-script', '-j', '2'], dir);
+  const lock = path.join(dir, 'cjpm.lock'), marker = path.join(dir, 'script-result');
+  const original = await read(lock);
+  await check('lifecycle-ordinary-baseline', () => {
+    assert.match(original, /\[requires\./);
+    assert.doesNotMatch(original, /\[scripts\./);
+  });
+  await write(path.join(dir, 'cjpm.toml'), pkg('consumer', 'executable') + ordinary + f.declaration);
+  await write(path.join(dir, 'build.cj'), f.script);
+  const requires = text => text.split(/^\[scripts(?:\.|\])/m)[0].trimEnd();
+  async function preserved(label) {
+    await check(label, async () => assert.equal(await read(lock), original));
+  }
+  async function produced(label, value) {
+    await check(label, async () => assert.equal(await read(marker), String(value)));
+  }
+  async function saved(label, value, commit) {
+    await check(label, async () => {
+      const content = await read(lock);
+      assert.match(content, /^version = 1$/m);
+      assert.match(content, /\[scripts\./);
+      assert.ok(content.includes(`#${commit}`));
+      assert.equal(requires(content), requires(original));
+      assert.equal(await read(marker), String(value));
+    });
+  }
+  await run('run-skip-script-control', [cjpm, 'run', '--skip-build', '--skip-script'], dir);
+  await preserved('run-skip-script-no-write');
+  await check('run-skip-script-no-producer', async () => assert.equal(await exists(marker), false));
+
+  await run('run-missing-executable', [cjpm, 'run', '--skip-build', '--name', 'absent'], dir, false);
+  await produced('run-missing-reached-pre', 11);
+  await preserved('run-missing-no-commit');
+  await fs.rm(path.join(dir, 'app-result'));
+  await run('run-program-failure', [cjpm, 'run', '--skip-build', '--', '--fail'], dir, false);
+  await check('run-failure-program-reached', async () => assert.equal(await read(path.join(dir, 'app-result')), 'ran'));
+  await preserved('run-program-failure-no-commit');
+
+  const postFailure = f.script.replace('return 0', 'return if (getCommandLine().contains("post-run")) { 9 } else { 0 }')
+    .replace('import std.fs.*', 'import std.fs.*\nimport std.env.*');
+  await write(path.join(dir, 'build.cj'), postFailure);
+  const post = await run('run-post-failure', [cjpm, 'run', '--skip-build'], dir, false);
+  await check('run-post-failure-reached', () => assert.match(post.stderr, /post-run/));
+  await preserved('run-post-failure-no-commit');
+  await write(path.join(dir, 'build.cj'), f.script);
+
+  await run('run-skip-first', [cjpm, 'run', '--skip-build'], dir);
+  await saved('run-skip-first-persisted', 11, f.first);
+  const pinned = await read(lock);
+  await f.advance();
+  await run('run-skip-warm', [cjpm, 'run', '--skip-build'], dir);
+  await saved('run-skip-warm-pinned', 11, f.first);
+  // Remove only this fixture's script outputs/cache; preserve the existing app.
+  await fs.rm(path.join(dir, 'build-script-cache'), { recursive: true, force: true });
+  await fs.rm(path.join(dir, 'cache'), { recursive: true, force: true });
+  await run('run-skip-cold', [cjpm, 'run', '--skip-build'], dir);
+  await saved('run-skip-cold-pinned', 11, f.first);
+
+  const invalid = pinned.replace(/^version = 1/m, 'version = 2');
+  await write(lock, invalid);
+  await fs.rm(marker);
+  await run('run-skip-invalid-lock', [cjpm, 'run', '--skip-build'], dir, false);
+  await check('run-skip-invalid-preserved', async () => {
+    assert.equal(await read(lock), invalid);
+    assert.equal(await exists(marker), false);
+  });
+  await write(lock, pinned);
+  await run('run-skip-restored', [cjpm, 'run', '--skip-build'], dir);
+  await saved('run-skip-restored-pinned', 11, f.first);
+
+  await write(lock, original);
+  await fs.rm(path.join(dir, 'build-script-cache'), { recursive: true, force: true });
+  const next = (await run('git-next', ['git', 'rev-parse', 'HEAD'], f.repo)).stdout.trim();
+  await run('clean-invalid-target', [cjpm, 'clean', '--target-dir', '.'], dir, false);
+  await produced('clean-failure-reached-pre', 22);
+  await preserved('clean-failure-no-commit');
+  await run('clean-script-control', [cjpm, 'clean', '--skip-script'], dir);
+  await preserved('clean-skip-script-no-write');
+  await run('clean-script-first', [cjpm, 'clean'], dir);
+  await saved('clean-script-persisted', 22, next);
+  await check('clean-removes-output-preserves-lock', async () => {
+    assert.equal(await exists(path.join(dir, 'target')), false);
+    assert.equal(await exists(path.join(dir, 'build-script-cache')), false);
+    assert.equal(await exists(lock), true);
+  });
+}
+
+await ({ registry, scripts, workspace, lifecycle })[mode]();
 console.log(`PASS public lock regression: ${mode}`);

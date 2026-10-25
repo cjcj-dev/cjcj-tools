@@ -169,7 +169,7 @@ public func runMultiScriptPost(globalConfig: GlobalConfig): Bool {
     return true
 }
 
-// Script resolution runs before normal resolution; merge its metadata at the existing lock write.
+// Merge script metadata at normal resolution or the successful command's final write.
 let resolvedScriptDeps = HashMap<String, HashMap<String, DepInfo>>()
 
 func getDepPath(modulePath: String, depName: String, depInfo: DepInfo): Option<String> {
@@ -235,15 +235,25 @@ func writeScriptLock(rootPath: String, scriptDeps: HashMap<String, DepInfo>): Bo
 }
 
 // Persist every script producer at the same module path getScriptDeps reads.
-// This runs only after the outer dependency checks succeed, never from the
-// nested script build. Pre-serialize all entries before changing any lock.
+// Never commit from the nested script build. Pre-serialize all entries before
+// changing any lock, preserving each module's own ordinary dependencies.
 func writeResolvedLocks(rootPath: String, rootLock: ModuleLock): Bool {
-    let canonicalRoot = getCanonicalPath(rootPath)
     let locks = HashMap<String, ModuleLock>()
-    locks[canonicalRoot] = rootLock
+    locks[getCanonicalPath(rootPath)] = rootLock
+    return writeResolvedLocks(locks)
+}
+
+// Commands such as run --skip-build and clean can produce scripts without
+// ordinary resolution. All successful top-level commands share this outlet.
+public func finishCommandLocks(): Bool {
+    if (resolvedScriptDeps.isEmpty()) { return true }
+    return writeResolvedLocks(HashMap<String, ModuleLock>())
+}
+
+func writeResolvedLocks(locks: HashMap<String, ModuleLock>): Bool {
     for ((modulePath, scripts) in resolvedScriptDeps) {
-        let lock = if (modulePath == canonicalRoot) {
-            rootLock
+        let lock = if (locks.contains(modulePath)) {
+            locks[modulePath]
         } else {
             let (ok, existing) = loadLockFile(modulePath)
             if (!ok) { return false }
@@ -263,6 +273,7 @@ func writeResolvedLocks(rootPath: String, rootLock: ModuleLock): Bool {
     for ((modulePath, lock) in locks) {
         if (!creatLockFile(modulePath, lock)) { return false }
     }
+    resolvedScriptDeps.clear()
     return true
 }
 

@@ -8,6 +8,7 @@ package cjpm
 
 import std.env.*
 import cjpm.command.*
+import cjpm.implement.finishCommandLocks
 import cjpm.util.CliFailError
 
 func getCommandArgs(): Array<String> {
@@ -30,6 +31,11 @@ main(): Int64 {
             return 1
         }
 
+        if (!prepareCommand(cmdHandler.cmdName, cmdHandler.arguments)) {
+            cmdHandler.printError()
+            return 1
+        }
+
         if (!runScriptPreCommand(cmdHandler.cmdName, cmdHandler.arguments)) {
             cmdHandler.printError()
             return 1
@@ -46,6 +52,11 @@ main(): Int64 {
         }
 
         if (!postCommandScript()) {
+            cmdHandler.printError()
+            return 1
+        }
+
+        if (!finishCommandLocks()) {
             cmdHandler.printError()
             return 1
         }

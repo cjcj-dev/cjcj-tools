@@ -58,6 +58,15 @@ func getArgList(cmdName: String, args: Array<String>): (Bool, ScriptArgs) {
     return (true, ScriptArgs(debug, verbose, cross, skip))
 }
 
+// Updating scripts and ordinary dependencies must use the same refreshed index.
+// Run this even with --skip-script, before any pre-command script can resolve.
+public func prepareCommand(cmdName: String, args: Array<String>): Bool {
+    if (cmdName == "update") {
+        return parseSkipScript(args) && updateIndex()
+    }
+    return true
+}
+
 public func runScriptPreCommand(cmdName: String, args: Array<String>): Bool {
     if (!BUILD_SCRIPT_CMD_PRE.contains(cmdName)) {
         return true
