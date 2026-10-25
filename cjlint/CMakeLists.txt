@@ -92,8 +92,22 @@ endif ()
 add_compile_definitions(CANGJIE_AST2CHIR)
 add_compile_definitions(CANGJIE_CODEGEN_CJNATIVE_BACKEND)
 
+# Older build.py versions put the selection in CC/CXX. CMake reloads that
+# first-configure argument from its compiler information even on warm builds.
+# Retire only that single legacy argument; preserve unrelated compiler flags.
+if(DEFINED GCC_TOOLCHAIN_FLAG)
+    foreach(lang C CXX)
+        separate_arguments(legacy_args NATIVE_COMMAND "${CMAKE_${lang}_COMPILER_ARG1}")
+        list(LENGTH legacy_args legacy_count)
+        if(legacy_count EQUAL 1 AND legacy_args MATCHES "^--gcc-toolchain=")
+            set(CMAKE_${lang}_COMPILER_ARG1 "" CACHE STRING "Arguments to compiler" FORCE)
+            set(CMAKE_${lang}_COMPILER_ARG1 "")
+        endif()
+    endforeach()
+endif()
 if(GCC_TOOLCHAIN_FLAG)
-    add_definitions(--gcc-toolchain="${GCC_TOOLCHAIN_FLAG}")
+    add_compile_options("--gcc-toolchain=${GCC_TOOLCHAIN_FLAG}")
+    add_link_options("--gcc-toolchain=${GCC_TOOLCHAIN_FLAG}")
 endif()
 
 foreach(libpath ${CANGJIE_TARGET_LIB})

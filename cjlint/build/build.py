@@ -96,10 +96,6 @@ def check_compiler(args):
         if not clang_pp_path:
             raise FileNotFoundError("clang++ is required to build cjlint")
 
-        if args.gcc_toolchain:
-            clang_path += " --gcc-toolchain={}".format(args.gcc_toolchain)
-            clang_pp_path += " --gcc-toolchain={}".format(args.gcc_toolchain)
-
         os.environ["CC"] = clang_path
         os.environ["CXX"] = clang_pp_path
     else:
@@ -174,6 +170,10 @@ def generate_cmake_defs(args):
     return [
         "-DCMAKE_BUILD_TYPE=" + args.build_type.value,
         "-DCOVERAGE_FLAG=" + bool_to_opt(args.code_coverage),
+        # CC/CXX environment arguments are only imported on first configure.
+        # Select the headers/libraries on every configure, including warm builds,
+        # through the project's compile and link options.
+        "-DGCC_TOOLCHAIN_FLAG=" + (os.path.abspath(args.gcc_toolchain) if args.gcc_toolchain else ""),
     ] + rpath_option + [arg for arg in args.cmake_args if arg != "--"] + ["-DJSON_ROOT=" + args.sources["json"]]
 
 
