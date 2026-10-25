@@ -461,7 +461,7 @@ public class DepAnalysisEngine {
                             join("${name}-${version}").toString()
                         if (this.refreshCache || !directoryExists(sourcePath)) {
                             try {
-                                let checksum = if (let Some(locked) <- this.lockRepoDepMap.get(fullName)) {
+                                let checksum: ?String = if (let Some(locked) <- this.lockRepoDepMap.get(fullName)) {
                                     locked.checksum
                                 } else { None }
                                 let (flag, output) = this.depot.download(name, org, version, lockedChecksum: checksum)
