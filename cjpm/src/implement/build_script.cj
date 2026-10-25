@@ -307,12 +307,15 @@ func buildScriptExe(scriptConfig: ScriptConfig, updateLocks!: Bool = false, forc
         }
 
         buildConfig.isVerbose = scriptConfig.isVerbose
-        buildConfig.isIncremental = true
+        // Explicit update can replace the same registry name/version while an
+        // archive preserves source timestamps. Rebuild its dependency graph,
+        // not just the script executable, before consuming the refreshed code.
+        buildConfig.isIncremental = !updateLocks
         buildConfig.isDebug = scriptConfig.isDebug
         buildConfig.targetDir = Path(scriptConfig.scriptTargetDir).join("libs").toString()
 
         buildConfig.globalConfig.isVerbose = buildConfig.isVerbose
-        buildConfig.globalConfig.isIncremental = true
+        buildConfig.globalConfig.isIncremental = buildConfig.isIncremental
         buildConfig.globalConfig.rootPath = scriptConfig.modulePath
         buildConfig.globalConfig.resolveType = RESOLVE_BUILD
         buildConfig.globalConfig.updateScriptLocks = updateLocks
