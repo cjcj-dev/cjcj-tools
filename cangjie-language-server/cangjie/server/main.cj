@@ -3,11 +3,23 @@ package cangjie_lsp
 import std.collection.*
 import std.console.Console
 import std.convert.*
-import std.fs.Path
 import stdx.encoding.json.*
 import cangjie_lsp_core.*
 import cangjie_lsp_protocol.*
 import cjcj::basic.DiagSeverity
+
+// Linux host stdio reads bytes, not ConsoleReader's line-oriented buffer.
+foreign func read(fd: Int32, buffer: CPointer<UInt8>, count: UIntNative): IntNative
+
+func readInput(buffer: Array<UInt8>): Int64 {
+    let handle = unsafe { acquireArrayRawData(buffer) }
+    try {
+        let count = unsafe { read(0, handle.pointer, UIntNative(buffer.size)) }
+        if (count < 0) { throw IllegalStateException("stdin read failed") }
+        return Int64(count)
+    } finally { unsafe { releaseArrayRawData(handle) } }
+}
+
 
 func object(fields: Array<(String, JsonValue)>): JsonObject {
     let result = JsonObject()
@@ -174,12 +186,12 @@ class Server {
 
 main(args: Array<String>): Int64 {
     if (args.size != 2 || args[0] != "--sdk") { Console.stdErr.writeln("Usage: cangjie-lsp --sdk <target SDK>"); return 2 }
-    let server = Server(args[1]); let framer = MessageFramer(); let buffer = Array<UInt8>(1, repeat: 0)
+    let server = Server(args[1]); let framer = MessageFramer(); let buffer = Array<UInt8>(4096, repeat: 0)
     try {
         while (!server.exiting) {
-            let count = Console.stdIn.read(buffer)
+            let count = readInput(buffer)
             if (count == 0) { framer.EndOfInput(); return if (server.stopped) { 0 } else { 1 } }
-            for (text in framer.Feed(buffer)) {
+            for (text in framer.Feed(buffer[0..count])) {
                 var parsed: Option<JsonValue> = None
                 try { parsed = Some(JsonValue.fromStr(text)) }
                 catch (exception: Exception) { error(JsonNull(), -32700, "Parse error"); continue }

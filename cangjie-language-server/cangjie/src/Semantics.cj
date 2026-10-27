@@ -16,15 +16,10 @@ public class SemanticLocation {
     }
 }
 
-public class SemanticDiagnostic {
-    public let diagnostic: Diagnostic
-    public init(diagnostic: Diagnostic) { this.diagnostic = diagnostic }
-}
-
 private class ServerDiagnosticHandler <: DiagnosticHandler {
     public let records = ArrayList<Diagnostic>()
     public init(engine: BasicDiagnosticEngine) { super(engine, DiagHandlerKind.LSP_HANDLER) }
-    public override func HandleDiagnose(item: Diagnostic): Unit { records.add(item) }
+    public override func HandleDiagnose(item: Diagnostic): Unit { synchronized(mtx) { records.add(item) } }
 }
 
 private class BoundOccurrence {
