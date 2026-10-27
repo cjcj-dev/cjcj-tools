@@ -3,6 +3,7 @@ package cangjie_lsp
 import std.collection.*
 import std.console.Console
 import std.convert.*
+import std.fs.*
 import stdx.encoding.json.*
 import cangjie_lsp_core.*
 import cangjie_lsp_protocol.*
@@ -88,6 +89,7 @@ class Server {
     let sdk: String
     let documents = DocumentStore()
     let semantics = HashMap<String, SemanticDocument>()
+    let workspaceRoots = HashSet<String>()
     var initialized = false
     var stopped = false
     var exiting = false
@@ -98,9 +100,38 @@ class Server {
         send(object([("jsonrpc", JsonString("2.0")), ("method", JsonString("textDocument/publishDiagnostics")),
             ("params", object([("uri", JsonString(fileUri(path))), ("version", JsonInt(version)), ("diagnostics", JsonArray(items))]))]))
     }
+    func addWorkspace(uri: String): Unit {
+        let directory = canonicalize(filePath(uri)).toString()
+        if (!FileInfo(directory).isDirectory()) { throw IllegalArgumentException("Workspace is not a directory") }
+        workspaceRoots.add(directory.trimEnd("/") + "/")
+    }
+    func inWorkspace(path: String): Bool {
+        let directory = parent(path)
+        if (!exists(directory)) { return false }
+        let actual = canonicalize(directory).toString().trimEnd("/") + "/"
+        for (root in workspaceRoots) { if (actual.startsWith(root)) { return true } }
+        return false
+    }
     func analyze(): Unit {
         semantics.clear()
-        let snapshots = documents.Snapshots()
+        let opened = documents.Snapshots()
+        let sources = HashMap<String, DocumentSnapshot>()
+        let openVersions = HashMap<String, Int64>()
+        // The compiler's source package consists of ordinary sibling .cj
+        // files. Open buffers override disk, never the other way round.
+        // Imported package/build configuration remains a separate project edge.
+        for (snapshot in opened) {
+            if (inWorkspace(snapshot.uri)) {
+                for (entry in Directory.readFrom(parent(snapshot.uri))) {
+                    if (entry.isRegular() && entry.name.endsWith(".cj") && !entry.name.endsWith("_test.cj")) {
+                        let path = entry.path.toString()
+                        sources[path] = DocumentSnapshot(path, 0, String.fromUtf8(File.readFrom(path)))
+                    }
+                }
+            }
+        }
+        for (snapshot in opened) { sources[snapshot.uri] = snapshot; openVersions[snapshot.uri] = snapshot.version }
+        let snapshots = sources.values().toArray()
         for (snapshot in snapshots) {
             let peers = ArrayList<DocumentSnapshot>()
             for (peer in snapshots) { if (parent(peer.uri) == parent(snapshot.uri)) { peers.add(peer) } }
@@ -125,7 +156,7 @@ class Server {
                 items.add(object([("range", rangeJson(ProtocolPositionAt(source.buffer, first), ProtocolPositionAt(source.buffer, max(first, last)))),
                     ("severity", JsonInt(severity)), ("source", JsonString("cangjie")), ("message", JsonString(message))]))
             }
-            publish(snapshot.uri, snapshot.version, items.toArray())
+            if (let Some(version) <- openVersions.get(snapshot.uri)) { publish(snapshot.uri, version, items.toArray()) }
         }
     }
     func receive(value: JsonValue): Unit {
@@ -137,7 +168,20 @@ class Server {
         if (stopped) { if (let Some(key) <- id) { error(key, -32600, "Server has shut down") }; return }
         if (method == "initialize") {
             if (initialized) { if (let Some(key) <- id) { error(key, -32600, "Already initialized") }; return }
-            let key = id.getOrThrow(); initialized = true
+            let key = id.getOrThrow()
+            if (let Some(params) <- request.get("params")) {
+                if (let Some(folders) <- params.asObject().get("workspaceFolders")) {
+                    if (let Some(list) <- (folders as JsonArray)) {
+                        for (folder in list.getItems()) { addWorkspace(string(folder, "uri")) }
+                    }
+                }
+                if (workspaceRoots.isEmpty()) {
+                    if (let Some(root) <- params.asObject().get("rootUri")) {
+                        if (let Some(uri) <- (root as JsonString)) { addWorkspace(uri.getValue()) }
+                    }
+                }
+            }
+            initialized = true
             response(key, object([("capabilities", object([("positionEncoding", JsonString("utf-16")),
                 ("textDocumentSync", object([("openClose", JsonBool(true)), ("change", JsonInt(2))])),
                 ("definitionProvider", JsonBool(true)), ("referencesProvider", JsonBool(true))])),
@@ -148,6 +192,11 @@ class Server {
         if (method == "shutdown") { response(id.getOrThrow(), JsonNull()); stopped = true; return }
         if (method == "initialized" || method == "$/cancelRequest") { return }
         let params = request.get("params").getOrDefault({ => JsonObject() })
+        if (method == "workspace/didChangeWatchedFiles") {
+            // Re-read unopened siblings after the client's real file event;
+            // the immutable open overlays still win during analysis.
+            analyze(); return
+        }
         if (method == "textDocument/didOpen") {
             let doc = field(params, "textDocument"); let path = filePath(string(doc, "uri"))
             documents.Open(path, number(doc, "version"), string(doc, "text")); analyze(); return

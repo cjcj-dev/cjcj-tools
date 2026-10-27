@@ -8,6 +8,7 @@ const cases=[];
 const encode=value=>{const body=typeof value==='string'?value:JSON.stringify(value);return Buffer.concat([Buffer.from(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n`),Buffer.from(body)]);};
 async function client(label,body,expected){
  if(mode==='snapshot'&&label!=='error-snapshot-queries')return;
+ if(mode==='workspace'&&label!=='workspace-unopened-siblings')return;
  if(mode==='control'&&label!=='independent-shutdown')return;
  if(mode==='target'&&label!=='lifecycle-semantics')return;
  const env={...process.env};for(const key of ['LD_LIBRARY_PATH','LD_PRELOAD','LD_AUDIT','CANGJIE_HOME','CANGJIE_PATH'])delete env[key];
@@ -88,6 +89,36 @@ await client('error-snapshot-queries',async c=>{
  assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri&&x.params.version===3)).params.diagnostics,[]);
  await validQueries('restored');
  c.send(request('snapshot-shutdown','shutdown'));assert.equal((await c.take(x=>x.id==='snapshot-shutdown')).result,null);c.send(note('exit'));c.end();
+},0);
+
+await client('workspace-unopened-siblings',async c=>{
+ const project=path.join(directory,'workspace');fs.mkdirSync(project,{recursive:true});
+ const disk=path.join(project,'definition.cj'),use=path.join(project,'use.cj');
+ const diskUri=pathToFileURL(disk).href,useUri=pathToFileURL(use).href;
+ const definition='package workspace_case\npublic func diskAnswer(): Int64 { return 42 }\n';
+ const source='package workspace_case\npublic func use(): Int64 { return diskAnswer() }\n';
+ fs.writeFileSync(disk,definition);fs.writeFileSync(use,source);
+ c.send(request('workspace-init','initialize',{workspaceFolders:[{uri:pathToFileURL(project).href,name:'workspace'}]}));
+ assert((await c.take(x=>x.id==='workspace-init')).result.capabilities);
+ c.send(note('initialized'));c.send(note('textDocument/didOpen',{textDocument:{uri:useUri,languageId:'cangjie',version:1,text:source}}));
+ assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===useUri)).params.diagnostics,[]);
+ const query=async(id,method,uri,text)=>{c.send(request(id,method,{textDocument:{uri},position:pos(text,'diskAnswer()'),...(method.endsWith('references')?{context:{includeDeclaration:false}}:{})}));return await c.take(x=>x.id===id);};
+ const found=await query('disk-definition','textDocument/definition',useUri,source);
+ assert.equal(found.result.uri,diskUri,'LSP_UNOPENED_DEFINITION_TARGET');assert.deepEqual(found.result.range.start,pos(definition,'diskAnswer()'));
+ const refs=await query('disk-references','textDocument/references',diskUri,definition);
+ assert.equal(refs.result.length,1);assert.equal(refs.result[0].uri,useUri,'LSP_UNOPENED_QUERY_TARGET');
+ // Disk is now invalid. An opened valid overlay must take precedence.
+ fs.writeFileSync(disk,definition.replace('return 42','return true'));
+ c.send(note('textDocument/didOpen',{textDocument:{uri:diskUri,languageId:'cangjie',version:1,text:definition}}));
+ assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===diskUri)).params.diagnostics,[]);
+ assert.equal((await query('overlay-definition','textDocument/definition',useUri,source)).result.uri,diskUri);
+ c.send(note('textDocument/didClose',{textDocument:{uri:diskUri}}));
+ c.send(request('disk-error-barrier','textDocument/definition',{textDocument:{uri:useUri},position:pos(source,'diskAnswer()')}));
+ assert.equal((await c.take(x=>x.id==='disk-error-barrier')).result,null,'LSP_CLOSED_DISK_ERROR_REJECT');
+ fs.writeFileSync(disk,definition);
+ c.send(note('workspace/didChangeWatchedFiles',{changes:[{uri:diskUri,type:2}]}));
+ assert.equal((await query('disk-restored','textDocument/definition',useUri,source)).result.uri,diskUri,'LSP_DISK_EVENT_RESTORES_INDEX');
+ c.send(request('workspace-shutdown','shutdown'));assert.equal((await c.take(x=>x.id==='workspace-shutdown')).result,null);c.send(note('exit'));c.end();
 },0);
 
 if(mode==='control')await client('independent-shutdown',async c=>{c.send(request('control-init','initialize'));assert((await c.take(x=>x.id==='control-init')).result.capabilities);c.send(request('control-stop','shutdown'));assert.equal((await c.take(x=>x.id==='control-stop')).result,null);c.send(note('exit'));c.end();},0);

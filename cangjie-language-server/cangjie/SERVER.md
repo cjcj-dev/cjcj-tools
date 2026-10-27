@@ -38,3 +38,5 @@ This is a development-host nonmacro scope. Shared frontend 523a macro execution
 has a separately preserved failing producer/host combination and is not granted
 by nonmacro server results. These tests neither delete that obligation nor grant
 full target SDK, managed, or cross-platform LSP qualification.
+
+Workspace successor: explicit initialize.workspaceFolders/rootUri enables the normal same-directory source-package graph, including unopened .cj siblings (excluding _test.cj). Open snapshots override disk. didClose restores disk and workspace/didChangeWatchedFiles refreshes unopened sources. This does not yet implement CJPM import/build graphs, hover, completion or rename. tests/server-client.mjs mode workspace targets this new server chain; dynamic execution is pending, no prior a3e wire is relabeled.
