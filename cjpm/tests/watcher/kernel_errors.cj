@@ -2,6 +2,7 @@ package cjpm_watcher_kernel_errors
 
 import cjpm.watcher.CjoPublicationWatcher
 import std.fs.*
+import std.convert.*
 import std.collection.*
 import std.sync.*
 import std.time.*
@@ -26,14 +27,20 @@ func queues(): Array<Int32> {
     result.toArray()
 }
 
+class ErrorObservation {
+    let mutex=Mutex()
+    var failed=false
+    var published: Int64=0
+}
+
 main(args: Array<String>): Int64 {
     try {
         let root = args[0]; let mode = args[1]
         if (!queues().isEmpty()) { throw Exception("unexpected pre-existing queue") }
-        let mutex = Mutex(); var failed = false; var published: Int64 = 0
+        let observed = ErrorObservation()
         let watcher = CjoPublicationWatcher([root+"/target.cjo.flag"],
-            { _ => synchronized(mutex) { published++ } },
-            { => synchronized(mutex) { failed=true } })
+            { _ => synchronized(observed.mutex) { observed.published++ } },
+            { => synchronized(observed.mutex) { observed.failed=true } })
         let descriptors = queues()
         if (descriptors.size != 1) { throw Exception("expected one product queue") }
         if (mode == "read-error") {
@@ -51,7 +58,7 @@ main(args: Array<String>): Int64 {
         let worker = spawn { => watcher.run() }
         for (_ in 0..1000) {
             var done = false
-            synchronized(mutex) { done=failed }
+            synchronized(observed.mutex) { done=observed.failed }
             if (done) { break }
             sleep(5*Duration.millisecond)
         }
@@ -59,7 +66,7 @@ main(args: Array<String>): Int64 {
         var rejected=false
         try { worker.get() } catch (error: Exception) { rejected=true; println("KERNEL_ERROR ${error.message}") }
         watcher.clean()
-        if (!failed || !rejected || published != 0 || !queues().isEmpty()) {
+        if (!observed.failed || !rejected || observed.published != 0 || !queues().isEmpty()) {
             throw Exception("kernel error did not propagate and release its queue")
         }
         println("KERNEL_ERROR_PASS ${mode} failed=1 rejected=1 published=0 queues=0")
