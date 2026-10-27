@@ -6,10 +6,14 @@ import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
 import {spawnSync} from 'node:child_process';
 const build=path.dirname(fileURLToPath(import.meta.url)), root=path.dirname(build);
-const {positionals,values:o}=parseArgs({allowPositionals:true,options:{
+const argv=process.argv.slice(2);
+for(let i=0;i<argv.length-1;i++)if(['-j','--jobs'].includes(argv[i])&&/^-[0-9]/.test(argv[i+1]))argv.splice(i,2,'--jobs='+argv[i+1]);
+let parsed;
+try { parsed=parseArgs({args:argv,allowPositionals:true,options:{
  'build-type':{type:'string',short:'t'},target:{type:'string'},'set-rpath':{type:'string'},
  'native-only':{type:'boolean'},jobs:{type:'string',short:'j'},prefix:{type:'string'},help:{type:'boolean',short:'h'}
-}});
+}}); }catch(error){console.error(error.message);process.exit(2);}
+const {positionals,values:o}=parsed;
 function run(argv){
  console.log(JSON.stringify({argv,cwd:build}));
  const p=spawnSync(argv[0],argv.slice(1),{cwd:build,stdio:'inherit',env:{...process.env,ZERO_AR_DATE:'1'}});

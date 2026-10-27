@@ -30,7 +30,10 @@ public class CjoPublicationWatcher {
             if (!exists(directory)) { Directory.create(directory, recursive: true) }
             // A previous interrupted build's flag is not this build's event.
             // Preparation completes before any compiler task is dispatched.
-            if (exists(path)) { remove(path) }
+            if (exists(path)) {
+                if (!FileInfo(path).isRegular()) { throw IllegalArgumentException("Publication flag is not a file: "+path) }
+                remove(path)
+            }
         }
     }
 
@@ -41,7 +44,12 @@ public class CjoPublicationWatcher {
                 synchronized(mutex) {
                     if (stopped) { return }
                     let published = ArrayList<String>()
-                    for (path in pending) { if (exists(path)) { published.add(path) } }
+                    for (path in pending) {
+                        if (exists(path)) {
+                            if (!FileInfo(path).isRegular()) { throw IllegalStateException("Publication flag is not a file: "+path) }
+                            published.add(path)
+                        }
+                    }
                     for (path in published) {
                         publish(path)
                         pending.remove(path)

@@ -12,11 +12,17 @@ func check(value: Bool, name: String): Unit {
 main(args: Array<String>): Int64 {
     try {
         let root = args[0]
+        if (args.size > 1 && args[1] == "control") {
+            var bad=false
+            try { CjoPublicationWatcher([root+"/invalid"],{ _ => },{ => }) } catch (_: Exception) { bad=true }
+            check(bad,"invalid-publication-path-independent-control")
+            return 0
+        }
         let left=root+"/left/same.cjo.flag"; let right=root+"/right/same.cjo.flag"
         Directory.create(root+"/left", recursive: true)
         File.writeTo(left,"stale".toArray())
-        let mutex=Mutex(); let seen=HashSet<String>(); var failed=false
-        let watcher=CjoPublicationWatcher([left,right],{ path => synchronized(mutex) { seen.add(path); () } },{ => failed=true })
+        let mutex=Mutex(); let seen=HashSet<String>(); var failed=false; var notifications: Int64=0
+        let watcher=CjoPublicationWatcher([left,right],{ path => synchronized(mutex) { seen.add(path); notifications++; () } },{ => failed=true })
         check(!exists(left),"stale-before-dispatch")
         let worker=spawn { => watcher.run() }
         try {
@@ -31,6 +37,13 @@ main(args: Array<String>): Int64 {
             }
             check(both,"same-basename-distinct-task-paths")
             synchronized(mutex) { check(seen.size==2,"only-registered-paths") }
+            for (_ in 0..60) {
+                var duplicate=false
+                synchronized(mutex) { duplicate=notifications>2 }
+                if (duplicate) { break }
+                sleep(5*Duration.millisecond)
+            }
+            synchronized(mutex) { check(notifications==2,"exactly-once-publication") }
             check(!failed,"normal-no-failure")
         } finally { watcher.stop(); let _=worker.get(); watcher.clean() }
         check(!exists(left)&&!exists(right),"joined-cleanup")
