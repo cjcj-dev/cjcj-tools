@@ -7,6 +7,8 @@ const [exe,sdk,directory,mode]=process.argv.slice(2);fs.mkdirSync(directory,{rec
 const cases=[];
 const encode=value=>{const body=typeof value==='string'?value:JSON.stringify(value);return Buffer.concat([Buffer.from(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n`),Buffer.from(body)]);};
 async function client(label,body,expected){
+ if(mode==='highlight'&&label!=='document-highlight')return;
+ if(mode==='highlight-control'&&label!=='highlight-definition-control')return;
  if(mode==='snapshot'&&label!=='error-snapshot-queries')return;
  if(mode==='workspace'&&label!=='workspace-unopened-siblings')return;
  if(mode==='control'&&label!=='independent-shutdown')return;
@@ -122,5 +124,66 @@ await client('workspace-unopened-siblings',async c=>{
 },0);
 
 if(mode==='control')await client('independent-shutdown',async c=>{c.send(request('control-init','initialize'));assert((await c.take(x=>x.id==='control-init')).result.capabilities);c.send(request('control-stop','shutdown'));assert.equal((await c.take(x=>x.id==='control-stop')).result,null);c.send(note('exit'));c.end();},0);
+
+
+
+async function highlightCase(c,onlyDefinition=false){
+ const project=path.join(directory,'highlight project');fs.mkdirSync(project,{recursive:true});
+ const definitionPath=path.join(project,'definition.cj'),usePath=path.join(project,'use.cj');
+ const definitionUri=pathToFileURL(definitionPath).href,useUri=pathToFileURL(usePath).href;
+ const definition='package highlight_case\npublic func target(): Int64 { return 42 }\n';
+ const use='package highlight_case\npublic func use(): Int64 { let emoji = "😀"; return target() + target() }\npublic func shadow(target: Int64): Int64 { return target + target }\n';
+ fs.writeFileSync(definitionPath,definition);fs.writeFileSync(usePath,use);
+ const ranges=(text)=>[...text.matchAll(/\btarget\b/g)].map(m=>{const lines=text.slice(0,m.index).split('\n'),start={line:lines.length-1,character:lines.at(-1).length};return {start,end:{line:start.line,character:start.character+6}};});
+ const compare=(actual,expected,label)=>{assert(Array.isArray(actual),label);for(const row of actual)assert.equal(row.kind,1,'kind is Text, not inferred read/write');assert.deepEqual(actual.map(x=>x.range).sort((a,b)=>a.start.line-b.start.line||a.start.character-b.start.character),expected,label);};
+ let serial=0;
+ async function query(uri,position,method='textDocument/documentHighlight'){
+  const id='highlight-query-'+serial++;c.send(request(id,method,{textDocument:{uri},position}));return await c.take(x=>x.id===id);
+ }
+ const highlight=async(uri,position)=>{const reply=await query(uri,position);assert.equal(reply.error,undefined);assert(Object.hasOwn(reply,'result'));return reply.result;};
+ if(!onlyDefinition){const reply=await query(useUri,{line:0,character:0});assert.equal(reply.error.code,-32002);}
+ c.send(request('highlight-init','initialize',{workspaceFolders:[{uri:pathToFileURL(project).href,name:'highlight'}]}));
+ const init=await c.take(x=>x.id==='highlight-init');if(!onlyDefinition)assert.equal(init.result.capabilities.documentHighlightProvider,true);
+ c.send(note('initialized'));c.send(note('textDocument/didOpen',{textDocument:{uri:useUri,languageId:'cangjie',version:1,text:use}}));
+ assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===useUri&&x.params.version===1)).params.diagnostics,[]);
+ const all=ranges(use),decl=ranges(definition);
+ if(onlyDefinition){
+  const result=await query(useUri,all[0].start,'textDocument/definition');assert.equal(result.result.uri,definitionUri,'HIGHLIGHT_DEFINITION_CONTROL');assert.deepEqual(result.result.range,decl[0]);
+ }else{
+  compare(await highlight(useUri,all[0].start),all.slice(0,2),'LSP_HIGHLIGHT_IDENTITY_TARGET');
+  compare(await highlight(definitionUri,decl[0].start),decl,'LSP_HIGHLIGHT_REQUESTED_FILE_ONLY');
+  compare(await highlight(useUri,all[2].start),all.slice(2),'LSP_HIGHLIGHT_SHADOW_PARAMETER');
+  compare(await highlight(useUri,all[4].start),all.slice(2),'LSP_HIGHLIGHT_SHADOW_USE');
+  compare(await highlight(useUri,{line:0,character:0}),[],'LSP_HIGHLIGHT_NO_TARGET');
+  assert.equal((await query(pathToFileURL(path.join(project,'unknown.cj')).href,{line:0,character:0})).error.code,-32602);
+  const bad=definition.replace('return 42','return true');
+  c.send(note('textDocument/didOpen',{textDocument:{uri:definitionUri,languageId:'cangjie',version:1,text:bad}}));
+  const diag=await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===definitionUri&&x.params.version===1);
+  assert(diag.params.diagnostics.some(x=>x.severity===1),'LSP_HIGHLIGHT_ERROR_SNAPSHOT_REACHED');
+  assert.equal(await highlight(useUri,all[0].start),null,'LSP_HIGHLIGHT_ERROR_SNAPSHOT_REJECT');
+  c.send(note('textDocument/didChange',{textDocument:{uri:definitionUri,version:2},contentChanges:[{text:definition}]}));
+  assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===definitionUri&&x.params.version===2)).params.diagnostics,[]);
+  compare(await highlight(useUri,all[0].start),all.slice(0,2),'LSP_HIGHLIGHT_ERROR_REPAIR');
+  fs.writeFileSync(definitionPath,bad);
+  c.send(note('textDocument/didClose',{textDocument:{uri:definitionUri}}));
+  assert.equal(await highlight(useUri,all[0].start),null,'LSP_HIGHLIGHT_CLOSED_DISK_REJECT');
+  fs.writeFileSync(definitionPath,definition);
+  c.send(note('workspace/didChangeWatchedFiles',{changes:[{uri:definitionUri,type:2}]}));
+  compare(await highlight(useUri,all[0].start),all.slice(0,2),'LSP_HIGHLIGHT_DISK_REFRESH');
+  const changed=use.replace('target() + target()','target() + target() + target()');
+  c.send(note('textDocument/didChange',{textDocument:{uri:useUri,version:2},contentChanges:[{text:changed}]}));
+  assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===useUri&&x.params.version===2)).params.diagnostics,[]);
+  compare(await highlight(useUri,ranges(changed)[0].start),ranges(changed).slice(0,3),'LSP_HIGHLIGHT_CURRENT_BUFFER');
+  c.send(note('textDocument/didOpen',{textDocument:{uri:definitionUri,languageId:'cangjie',version:3,text:definition}}));
+  assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===definitionUri&&x.params.version===3)).params.diagnostics,[]);
+  c.send(note('textDocument/didClose',{textDocument:{uri:useUri}}));
+  compare(await highlight(useUri,all[0].start),all.slice(0,2),'LSP_HIGHLIGHT_CLOSE_RESTORES_DISK');
+ }
+ c.send(request('highlight-shutdown','shutdown'));assert.equal((await c.take(x=>x.id==='highlight-shutdown')).result,null);
+ if(!onlyDefinition)assert.equal((await query(useUri,all[0].start)).error.code,-32600);
+ c.send(note('exit'));c.end();
+}
+await client('document-highlight',c=>highlightCase(c),0);
+if(mode==='highlight-control')await client('highlight-definition-control',c=>highlightCase(c,true),0);
 
 console.log('LSP_SERVER_CLIENT_PASS processes='+cases.length+' mode='+(mode??'all'));

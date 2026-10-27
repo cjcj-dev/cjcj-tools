@@ -19,7 +19,7 @@ bin/cangjie-lsp --sdk /absolute/target/sdk
 
 The current implemented protocol surface is initialize/initialized,
 shutdown/exit, incremental UTF-16 didOpen/didChange/didClose, definition,
-references, and published frontend diagnostics. Same-directory open documents
+references, document highlights, and published frontend diagnostics. Same-directory open documents
 are analyzed together using cached source buffers and declaration identity.
 Local absolute file URIs are decoded at the protocol boundary. The server
 advertises only its implemented semantic request capabilities; it does not
@@ -40,3 +40,14 @@ by nonmacro server results. These tests neither delete that obligation nor grant
 full target SDK, managed, or cross-platform LSP qualification.
 
 Workspace successor: explicit initialize.workspaceFolders/rootUri enables the normal same-directory source-package graph, including unopened .cj siblings (excluding _test.cj). Open snapshots override disk. didClose restores disk and workspace/didChangeWatchedFiles refreshes unopened sources. This does not yet implement CJPM import/build graphs, hover, completion or rename. tests/server-client.mjs mode workspace targets this new server chain; dynamic execution is pending, no prior a3e wire is relabeled.
+
+`textDocument/documentHighlight` uses the selected snapshot's resolved declaration
+identity and returns declaration/reference ranges only in the requested file.
+Highlights use kind Text (1); read/write classification is not claimed. An
+invalid SEMA snapshot returns null, a valid position without a symbol returns
+an empty array, and unknown documents keep the invalid-params response.
+`server-client.mjs ... highlight` exercises shadowing, UTF-16 after a non-BMP
+character, unopened siblings, buffer/disk changes and error snapshot recovery
+through stdio. Mode `highlight-control` makes an independent definition query.
+The same-directory project scope and the remaining protocol/macro obligations
+above continue to apply. New source is not dynamic qualification by itself.

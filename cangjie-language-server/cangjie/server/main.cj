@@ -187,7 +187,8 @@ class Server {
             initialized = true
             response(key, object([("capabilities", object([("positionEncoding", JsonString("utf-16")),
                 ("textDocumentSync", object([("openClose", JsonBool(true)), ("change", JsonInt(2))])),
-                ("definitionProvider", JsonBool(true)), ("referencesProvider", JsonBool(true))])),
+                ("definitionProvider", JsonBool(true)), ("referencesProvider", JsonBool(true)),
+                ("documentHighlightProvider", JsonBool(true))])),
                 ("serverInfo", object([("name", JsonString("cangjie-lsp")), ("version", JsonString("0.1.0"))]))]))
             return
         }
@@ -217,11 +218,22 @@ class Server {
             let path = filePath(string(field(params, "textDocument"), "uri")); let old = documents.Get(path)
             documents.Close(path); semantics.remove(path); publish(path, old.version, []); analyze(); return
         }
-        if (method == "textDocument/definition" || method == "textDocument/references") {
+        if (method == "textDocument/definition" || method == "textDocument/references" ||
+            method == "textDocument/documentHighlight") {
             let path = filePath(string(field(params, "textDocument"), "uri")); let semantic = semantics.get(path).getOrThrow()
             if (!semantic.succeeded) { response(id.getOrThrow(), JsonNull()); return }
             let pos = position(field(params, "position"))
-            if (method == "textDocument/definition") {
+            if (method == "textDocument/documentHighlight") {
+                let highlights = ArrayList<JsonValue>()
+                // References resolves declaration identity, including shadowing.
+                // LSP highlights belong only to the requested document.
+                for (found in semantic.References(pos, includeDeclaration: true)) {
+                    if (found.path == path) {
+                        highlights.add(object([("range", rangeJson(found.start, found.end)), ("kind", JsonInt(1))]))
+                    }
+                }
+                response(id.getOrThrow(), JsonArray(highlights))
+            } else if (method == "textDocument/definition") {
                 if (let Some(found) <- semantic.Definition(pos)) { response(id.getOrThrow(), locationJson(found)) }
                 else { response(id.getOrThrow(), JsonNull()) }
             } else {
