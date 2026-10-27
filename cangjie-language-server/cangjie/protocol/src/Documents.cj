@@ -88,3 +88,29 @@ public class DocumentStore {
         return Open(uri, version, text)
     }
 }
+
+// Inverse of ProtocolOffset for source ranges returned by the frontend.
+public func ProtocolPositionAt(text: String, byteOffset: Int64): ProtocolPosition {
+    let bytes = text.toArray()
+    if (byteOffset < 0 || byteOffset > bytes.size) { throw IllegalArgumentException("Byte offset outside document") }
+    var offset: Int64 = 0
+    var line: Int64 = 0
+    var units: Int64 = 0
+    while (offset < byteOffset) {
+        if (bytes[offset] == 13) {
+            offset++
+            if (offset < bytes.size && bytes[offset] == 10) {
+                if (offset == byteOffset) { throw IllegalArgumentException("Byte offset splits CRLF") }
+                offset++
+            }
+            line++; units = 0
+        } else if (bytes[offset] == 10) { offset++; line++; units = 0 }
+        else {
+            let decoded = Rune.fromUtf8(bytes, offset)
+            if (offset + decoded[1] > byteOffset) { throw IllegalArgumentException("Byte offset splits UTF-8 character") }
+            offset += decoded[1]
+            units += if (UInt32(decoded[0]) > 0xffffu32) { 2 } else { 1 }
+        }
+    }
+    return ProtocolPosition(line, units)
+}

@@ -18,7 +18,7 @@ let manifest=fs.readFileSync(root+'/cjpm.toml.in','utf8');
 if(frontend){manifest=manifest.replaceAll('@FRONTEND@',frontend.replaceAll('\\','/'));}
 else {
  manifest=manifest.replace(/^"cjcj::.*$/gm,'');
- const dirs=['basic','utils','lex','option','ast','parse'].map(name=>path.resolve(o['frontend-packages'],name+'@cjcj').replaceAll('\\','/'));
+ const dirs=['basic','utils','lex','option','ast','parse','flatbuffers','conditional_compilation','modules','macro_pkg','meta_transformation','mangle','sema','chir','codegen','incremental_compilation','frontend'].map(name=>path.resolve(o['frontend-packages'],name+'@cjcj').replaceAll('\\','/'));
  manifest+='\n[target.x86_64-unknown-linux-gnu.bin-dependencies]\npath-option = '+JSON.stringify(dirs)+'\n';
 }
 if(o['runtime-config'])manifest=manifest.replace('output-type = "static"','output-type = "static"\nlink-option = '+JSON.stringify(path.resolve(o['runtime-config']).replaceAll('\\','/')));

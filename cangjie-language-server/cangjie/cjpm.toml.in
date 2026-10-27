@@ -9,3 +9,4 @@ cangjie_lsp_protocol = { path = "protocol" }
 "cjcj::parse" = { path = "@FRONTEND@/packages/parse" }
 "cjcj::ast" = { path = "@FRONTEND@/packages/ast" }
 "cjcj::basic" = { path = "@FRONTEND@/packages/basic" }
+"cjcj::frontend" = { path = "@FRONTEND@/packages/frontend" }
