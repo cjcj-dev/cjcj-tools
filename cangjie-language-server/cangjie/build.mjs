@@ -33,8 +33,8 @@ if(o.server){
  const app=build+'/server';fs.mkdirSync(app,{recursive:true});fs.cpSync(root+'/server',app+'/src',{recursive:true});
  const names=['basic','utils','lex','option','ast','parse','flatbuffers','conditional_compilation','modules','macro_pkg','meta_transformation','mangle','sema','chir','codegen','incremental_compilation','frontend'];
  const bins=names.map(name=>path.resolve(o['frontend-packages'],name+'@cjcj'));
- bins.push(build+'/target/release/cangjie_lsp_core',build+'/target/release/cangjie_lsp_protocol',path.resolve(o['json-build'],'modules/linux_x86_64_cjnative'));
- fs.writeFileSync(app+'/runtime-link.rsp','-rpath \"$ORIGIN/../lib\"\n');
+ bins.push(build+'/target/release/cangjie_lsp_core',build+'/target/release/cangjie_lsp_protocol',path.resolve(o['json-build'],'modules/linux_x86_64_cjnative/stdx'));
+ fs.writeFileSync(app+'/runtime-link.rsp','-rpath "$ORIGIN/../lib"\n');
  const link=[o['runtime-config'],o['llvm-shim'],o['llvm-library'],'-lstdc++',
  path.resolve(o['json-build'],'lib/linux_x86_64_cjnative/libstdx.encoding.json.a'),
  path.resolve(o['json-build'],'lib/linux_x86_64_cjnative/libstdx.serialization.serialization.a'),'@'+app+'/runtime-link.rsp'];
