@@ -144,19 +144,31 @@ class Server {
             for (diag in semantic.records) {
                 let begin = if (diag.isRefactor) { diag.mainHint.range.begin } else { diag.start }
                 let end = if (diag.isRefactor) { diag.mainHint.range.end } else { diag.end }
-                if (begin.fileID == 0) { continue }
-                let source = semantic.compiler.GetSourceManager().GetSource(begin.fileID)
-                if (source.path != snapshot.uri) { continue }
-                let first = source.PosToOffset(begin)
-                let last = if (end.fileID == begin.fileID) { source.PosToOffset(end) } else { first }
+                // Configuration/import failures may have no source location.
+                // Publish their real message on the document whose analysis
+                // failed; never turn that failure into an empty diagnostic set.
+                var first = ProtocolPosition(0, 0)
+                var last = ProtocolPosition(0, 0)
+                if (begin.fileID != 0) {
+                    let source = semantic.compiler.GetSourceManager().GetSource(begin.fileID)
+                    if (source.path != snapshot.uri) { continue }
+                    let beginOffset = source.PosToOffset(begin)
+                    let endOffset = if (end.fileID == begin.fileID) { source.PosToOffset(end) } else { beginOffset }
+                    first = ProtocolPositionAt(source.buffer, beginOffset)
+                    last = ProtocolPositionAt(source.buffer, max(beginOffset, endOffset))
+                }
                 let message = if (diag.isRefactor) { diag.errorMessage } else { diag.diagMessage }
+                if (begin.fileID == 0) {
+                    Console.stdErr.writeln("LSP_ANALYSIS_DIAGNOSTIC sdk=" + sdk + " file=" + snapshot.uri +
+                        " succeeded=" + semantic.succeeded.toString() + " message=" + message)
+                }
                 let severity: Int64 = match (diag.diagSeverity) {
                     case DiagSeverity.DS_ERROR => 1
                     case DiagSeverity.DS_WARNING => 2
                     case DiagSeverity.DS_NOTE => 3
                     case _ => 4
                 }
-                items.add(object([("range", rangeJson(ProtocolPositionAt(source.buffer, first), ProtocolPositionAt(source.buffer, max(first, last)))),
+                items.add(object([("range", rangeJson(first, last)),
                     ("severity", JsonInt(severity)), ("source", JsonString("cangjie")), ("message", JsonString(message))]))
             }
             if (let Some(version) <- openVersions.get(snapshot.uri)) { publish(snapshot.uri, version, items.toArray()) }

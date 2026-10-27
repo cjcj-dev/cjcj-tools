@@ -59,6 +59,10 @@ public class SemanticDocument {
         for (peer in companions) { if (peer.uri != snapshot.uri) { args.add(peer.uri) } }
         if (!invocation.ParseArgs(args)) { throw IllegalArgumentException("Invalid frontend arguments") }
         invocation.globalOptions.executablePath = targetSdk + "/bin/cjc"
+        // --sdk selects the analysis modules independently of the host process
+        // and of a symlinked compiler entry. DetectCangjieHome realpaths argv0.
+        invocation.globalOptions.cangjieHome = targetSdk
+        invocation.globalOptions.environment.cangjieHome.hasValue = false
         compiler = CompilerInstance(invocation, diagnostics)
         let handler = ServerDiagnosticHandler(compiler.importManager.getOrThrow().GetDiagnosticEngine())
         compiler.importManager.getOrThrow().GetDiagnosticEngine().RegisterHandler(handler)
