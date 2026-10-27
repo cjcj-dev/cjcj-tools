@@ -1,3 +1,5 @@
+package lsp_protocol_contract
+
 import cangjie_lsp_protocol.*
 import std.collection.*
 
