@@ -34,9 +34,10 @@ if(o.server){
  const names=['basic','utils','lex','option','ast','parse','flatbuffers','conditional_compilation','modules','macro_pkg','meta_transformation','mangle','sema','chir','codegen','incremental_compilation','frontend'];
  const bins=names.map(name=>path.resolve(o['frontend-packages'],name+'@cjcj'));
  bins.push(build+'/target/release/cangjie_lsp_core',build+'/target/release/cangjie_lsp_protocol',path.resolve(o['json-build'],'modules/linux_x86_64_cjnative'));
+ fs.writeFileSync(app+'/runtime-link.rsp','-rpath \"$ORIGIN/../lib\"\n');
  const link=[o['runtime-config'],o['llvm-shim'],o['llvm-library'],'-lstdc++',
  path.resolve(o['json-build'],'lib/linux_x86_64_cjnative/libstdx.encoding.json.a'),
- path.resolve(o['json-build'],'lib/linux_x86_64_cjnative/libstdx.serialization.serialization.a'),'-Wl,-rpath,$ORIGIN/../lib'];
+ path.resolve(o['json-build'],'lib/linux_x86_64_cjnative/libstdx.serialization.serialization.a'),'@'+app+'/runtime-link.rsp'];
  fs.writeFileSync(app+'/cjpm.toml','[package]\nname = "cangjie_lsp"\nversion = "0.1.0"\ncjc-version = "1.1.0"\noutput-type = "executable"\nsrc-dir = "src"\nlink-option = '+JSON.stringify(link.join(' '))+'\n[target.x86_64-unknown-linux-gnu.bin-dependencies]\npath-option = '+JSON.stringify(bins)+'\n');
  const argv=[o.cjpm,'build','--target-dir',app+'/target','-j',jobs,'-V'],started=new Date().toISOString();
  const r=spawnSync(argv[0],argv.slice(1),{cwd:app,env:{...process.env,CANGJIE_HOME:sdk,PATH:sdk+'/bin'+path.delimiter+process.env.PATH},stdio:'inherit'});
