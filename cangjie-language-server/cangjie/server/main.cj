@@ -119,7 +119,7 @@ class Server {
     func receive(value: JsonValue): Unit {
         let request = value.asObject()
         let id = request.get("id")
-        if (string(value, "jsonrpc") != "2.0") { error(id.getOrDefault(JsonNull()), -32600, "Invalid JSON-RPC version"); return }
+        if (string(value, "jsonrpc") != "2.0") { error(id.getOrDefault({ => JsonNull() }), -32600, "Invalid JSON-RPC version"); return }
         let method = string(value, "method")
         if (method == "exit") { exiting = true; exitCode = if (stopped) { 0 } else { 1 }; return }
         if (stopped) { if (let Some(key) <- id) { error(key, -32600, "Server has shut down") }; return }
@@ -135,7 +135,7 @@ class Server {
         if (!initialized) { if (let Some(key) <- id) { error(key, -32002, "Server not initialized") }; return }
         if (method == "shutdown") { response(id.getOrThrow(), JsonNull()); stopped = true; return }
         if (method == "initialized" || method == "$/cancelRequest") { return }
-        let params = request.get("params").getOrDefault(JsonObject())
+        let params = request.get("params").getOrDefault({ => JsonObject() })
         if (method == "textDocument/didOpen") {
             let doc = field(params, "textDocument"); let path = filePath(string(doc, "uri"))
             documents.Open(path, number(doc, "version"), string(doc, "text")); analyze(); return
