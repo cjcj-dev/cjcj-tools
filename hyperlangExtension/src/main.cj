@@ -107,8 +107,9 @@ main(args: Array<String>) {
             return 1
         }
 
+        var status: Int64 = 0
         if (!cla.arkpath.isEmpty()) {
-            generateCangjieBindingsForC(cla.cjModuleName, cla.arkpath, dir.toString())
+            status = generateCangjieBindingsForC(cla.cjModuleName, cla.arkpath, dir.toString())
         } else {
             let fileInfos = ArrayList<FileInfo>()
             let inputDir = Path(cla.directoryPath)
@@ -118,7 +119,7 @@ main(args: Array<String>) {
                 return 1
             }
 
-            let futureList = ArrayList<Future<Unit>>()
+            let futureList = ArrayList<Future<Int64>>()
             fileInfos |> forEach { fileInfo => 
                 let future = spawn {
                     generateCangjieBindingsForC(cla.cjModuleName, fileInfo.path.toString(), dir.toString())
@@ -126,13 +127,19 @@ main(args: Array<String>) {
                 futureList.add(future)
             }
             for (f in futureList) {
-                f.get()
+                try {
+                    let result = f.get()
+                    if (status == 0 && result != 0) { status = result }
+                } catch (e: Exception) {
+                    println(e.message)
+                    if (status == 0) { status = 1 }
+                }
             }
         }
         println("========Generate C to cangjie bindings end!========")
         let end = MonoTime.now()
         println("total cost of hle: ${end - start}")
-        return 0
+        return status
     }
 
     // we want to get `lz4js` from `src/dtsparser/node_modules/@types/lz4js/`
@@ -171,10 +178,10 @@ main(args: Array<String>) {
     return 0
 }
 
-func generateCangjieBindingsForC(moduleName: String, filePath: String, outDir: String): Unit {
+func generateCangjieBindingsForC(moduleName: String, filePath: String, outDir: String): Int64 {
     if (!filePath.endsWith(".h")) {
-        println("Warning: The input file is not a .h file: " + filePath)
-        return
+        println("Error: The input file is not a .h file: " + filePath)
+        return 1
     }
 
     let outputFileName = getFileName(filePath).replace(".h", ".cj")
@@ -189,7 +196,7 @@ func generateCangjieBindingsForC(moduleName: String, filePath: String, outDir: S
     }
     cjbindArguments.add(all: ["-p", moduleName, "-o", outDir + outputFileName, filePath, "--"])
     for (arg in cla.clangArgs.split(" ")) {
-        cjbindArguments.add(arg)
+        if (!arg.isEmpty()) { cjbindArguments.add(arg) }
     }
 
     try {
@@ -197,9 +204,11 @@ func generateCangjieBindingsForC(moduleName: String, filePath: String, outDir: S
         if (returnCode != 0) {
             println("Error: cjbind generate failed, return code is ${returnCode}.")
         }
+        return returnCode
     } catch (e: Exception) {
         println(e.message)
         e.printStackTrace()
+        return 1
     }
 }
 
