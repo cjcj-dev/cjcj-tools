@@ -124,7 +124,10 @@ class Server {
             if (inWorkspace(snapshot.uri)) {
                 for (entry in Directory.readFrom(parent(snapshot.uri))) {
                     if (entry.isRegular() && entry.name.endsWith(".cj") && !entry.name.endsWith("_test.cj")) {
-                        let path = entry.path.toString()
+                        // parent already ends in a separator. FileInfo may retain
+                        // the extra separator inserted by directory enumeration;
+                        // use the open buffer's lexical parent for one source key.
+                        let path = parent(snapshot.uri) + entry.name
                         sources[path] = DocumentSnapshot(path, 0, String.fromUtf8(File.readFrom(path)))
                     }
                 }

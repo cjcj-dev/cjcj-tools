@@ -92,7 +92,7 @@ await client('error-snapshot-queries',async c=>{
 },0);
 
 await client('workspace-unopened-siblings',async c=>{
- const project=path.join(directory,'workspace');fs.mkdirSync(project,{recursive:true});
+ const project=path.join(directory,'workspace with spaces');fs.mkdirSync(project,{recursive:true});
  const disk=path.join(project,'definition.cj'),use=path.join(project,'use.cj');
  const diskUri=pathToFileURL(disk).href,useUri=pathToFileURL(use).href;
  const definition='package workspace_case\npublic func diskAnswer(): Int64 { return 42 }\n';
@@ -101,7 +101,7 @@ await client('workspace-unopened-siblings',async c=>{
  c.send(request('workspace-init','initialize',{workspaceFolders:[{uri:pathToFileURL(project).href,name:'workspace'}]}));
  assert((await c.take(x=>x.id==='workspace-init')).result.capabilities);
  c.send(note('initialized'));c.send(note('textDocument/didOpen',{textDocument:{uri:useUri,languageId:'cangjie',version:1,text:source}}));
- assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===useUri)).params.diagnostics,[]);
+ assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===useUri)).params.diagnostics,[],'LSP_UNOPENED_SIBLING_ANALYZED');
  const query=async(id,method,uri,text)=>{c.send(request(id,method,{textDocument:{uri},position:pos(text,'diskAnswer()'),...(method.endsWith('references')?{context:{includeDeclaration:false}}:{})}));return await c.take(x=>x.id===id);};
  const found=await query('disk-definition','textDocument/definition',useUri,source);
  assert.equal(found.result.uri,diskUri,'LSP_UNOPENED_DEFINITION_TARGET');assert.deepEqual(found.result.range.start,pos(definition,'diskAnswer()'));
