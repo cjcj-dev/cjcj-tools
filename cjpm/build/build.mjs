@@ -59,9 +59,10 @@ try {
    if(o['set-rpath']&&!windows)extra.push('--link-options='+(darwin?'-rpath '+o['set-rpath']:'--disable-new-dtags -rpath='+o['set-rpath']));
    if(windows){
      if(!process.env.MINGW_PATH)throw Error('MINGW_PATH is required');
-     links.push('-L',path.join(process.env.MINGW_PATH,'x86_64-w64-mingw32/lib'),'-lcrypt32','-liphlpapi','-ldbghelp','-luserenv','-lole32');
+     links.push('-L',path.join(process.env.MINGW_PATH,'x86_64-w64-mingw32/lib'),'-lcrypt32','-liphlpapi','-ldbghelp','-luserenv','-lole32','-lc++','-lunwind','-lpthread');
      extra.push('--link-options=--no-insert-timestamp'+(cross?' -static':''));
-   }else if(!darwin)extra.push('--link-options=-z noexecstack -z relro -z now -s');
+   }else if(darwin){links.push('-lc++','-ldl','-lpthread');}
+   else {links.push('-lstdc++','-lgcc_s','-ldl','-lpthread');extra.push('--link-options=-z noexecstack -z relro -z now -s');}
    const binary=windows?'cjpm.exe':'cjpm';
    run([cjc,...common,'--import-path',stdx,...links,...extra,'-p',path.join(root,'src'),'-O2','--output-dir',out,'-o',binary]);
    copy(path.join(out,binary),path.join(dist,binary));copy(path.join(root,'config/cangjie-repo.toml'),path.join(dist,'cangjie-repo.toml'));
