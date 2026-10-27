@@ -1,6 +1,6 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
 // Licensed under Apache-2.0 with Runtime Library Exception.
-package cangjie_lsp_core
+package cangjie_lsp_protocol
 
 import std.collection.*
 import std.convert.*
@@ -31,8 +31,7 @@ public class MessageFramer {
                 if (boundary < 0) { break }
                 let header = String.fromUtf8(pending.toArray()[0..boundary])
                 var length: Int64 = 0
-                for (line in header.split("
-")) {
+                for (line in header.split("\n")) {
                     let trimmed = line.trimAscii()
                     if (trimmed.startsWith("#")) { continue }
                     if (trimmed.startsWith("Content-Length:")) {
@@ -62,7 +61,5 @@ public class MessageFramer {
 }
 
 public func EncodeMessage(json: String): Array<UInt8> {
-    return ("Content-Length: "+json.size.toString()+"
-
-"+json).toArray()
+    return ("Content-Length: "+json.size.toString()+"\r\n\r\n"+json).toArray()
 }

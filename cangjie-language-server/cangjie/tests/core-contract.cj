@@ -1,4 +1,5 @@
 import cangjie_lsp_core.*
+import cangjie_lsp_protocol.*
 import std.collection.*
 
 func check(value: Bool, name: String): Unit {
@@ -38,7 +39,7 @@ func documents(): Unit {
     let changed = store.Change(uri, 2, [TextChange("EN", range: (ProtocolPosition(0, 5), ProtocolPosition(0, 7)))])
     check(changed.text == "// 😀EN\r\nmain() { println(7) }\r\n", "utf16-edit-after-supplementary")
     check(old.text == "// 😀中文\r\nmain() { println(7) }\r\n", "snapshot-immutable")
-    let parsed = store.Parse(uri)
+    let parsed = ParsedDocument(store.Get(uri))
     check(parsed.diagnostics.GetErrorCount() == 0 && parsed.ast.decls.size == 1, "real-cangjie-parser")
     let replaced = store.Change(uri, 3, [TextChange("main() { println(8) }"),
         TextChange("9", range: (ProtocolPosition(0, 17), ProtocolPosition(0, 18)))])
@@ -52,7 +53,7 @@ func documents(): Unit {
     try { store.Change(uri, 3, [TextChange("stale")]) } catch (_: Exception) { stale = true }
     check(stale && store.Get(uri).text == replaced.text, "stale-version-refused")
     store.Change(uri, 4, [TextChange("func broken( { }")])
-    check(store.Parse(uri).diagnostics.GetErrorCount() > 0, "real-parser-error")
+    check(ParsedDocument(store.Get(uri)).diagnostics.GetErrorCount() > 0, "real-parser-error")
     store.Close(uri)
     var closed = false
     try { store.Get(uri) } catch (_: Exception) { closed = true }

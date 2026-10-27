@@ -12,6 +12,7 @@ fs.mkdirSync(build,{recursive:true});
 // CJPM requires src-dir inside its module. This is the normal build workspace
 // copy of this tool's source; dependency packages remain the selected input.
 fs.cpSync(root+'/src',build+'/src',{recursive:true});
+fs.cpSync(root+'/protocol',build+'/protocol',{recursive:true});
 fs.writeFileSync(build+'/cjpm.toml',fs.readFileSync(root+'/cjpm.toml.in','utf8').replaceAll('@FRONTEND@',frontend.replaceAll('\\','/')));
 const argv=[o.cjpm,'build','--target-dir',build+'/target','-j',jobs,'-V'];
 const started=new Date().toISOString();
