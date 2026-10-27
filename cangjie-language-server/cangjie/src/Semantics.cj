@@ -3,6 +3,8 @@ package cangjie_lsp_core
 import std.collection.*
 import cangjie_lsp_protocol.*
 import cjcj::ast.{Node, Decl, RefExpr, MemberAccess, Identifier, Walker, VisitAction}
+import cjcj::basic.DiagnosticEngine as BasicDiagnosticEngine
+import cjcj::basic.{Diagnostic, DiagnosticHandler, DiagHandlerKind}
 import cjcj::frontend.{CompilerInvocation, CompilerInstance, CompileStage, DiagnosticEngine, SrcCodeCacheInfo}
 
 public class SemanticLocation {
@@ -12,6 +14,17 @@ public class SemanticLocation {
     public init(path: String, start: ProtocolPosition, end: ProtocolPosition) {
         this.path = path; this.start = start; this.end = end
     }
+}
+
+public class SemanticDiagnostic {
+    public let diagnostic: Diagnostic
+    public init(diagnostic: Diagnostic) { this.diagnostic = diagnostic }
+}
+
+private class ServerDiagnosticHandler <: DiagnosticHandler {
+    public let records = ArrayList<Diagnostic>()
+    public init(engine: BasicDiagnosticEngine) { super(engine, DiagHandlerKind.LSP_HANDLER) }
+    public override func HandleDiagnose(item: Diagnostic): Unit { records.add(item) }
 }
 
 private class BoundOccurrence {
@@ -30,19 +43,25 @@ public class SemanticDocument {
     public let diagnostics = DiagnosticEngine()
     public let compiler: CompilerInstance
     public let succeeded: Bool
+    public let records: ArrayList<Diagnostic>
     private let occurrences = ArrayList<BoundOccurrence>()
 
-    public init(snapshot: DocumentSnapshot, targetSdk: String, importPaths!: Array<String> = []) {
+    public init(snapshot: DocumentSnapshot, targetSdk: String, importPaths!: Array<String> = [], companions!: Array<DocumentSnapshot> = []) {
         this.snapshot = snapshot
         let invocation = CompilerInvocation()
         let args = ArrayList<String>([targetSdk + "/bin/cjc", "--output-type=staticlib"])
         for (directory in importPaths) { args.add("--import-path=" + directory) }
         args.add(snapshot.uri)
+        for (peer in companions) { if (peer.uri != snapshot.uri) { args.add(peer.uri) } }
         if (!invocation.ParseArgs(args)) { throw IllegalArgumentException("Invalid frontend arguments") }
         invocation.globalOptions.executablePath = targetSdk + "/bin/cjc"
         compiler = CompilerInstance(invocation, diagnostics)
+        let handler = ServerDiagnosticHandler(compiler.importManager.getOrThrow().GetDiagnosticEngine())
+        compiler.importManager.getOrThrow().GetDiagnosticEngine().RegisterHandler(handler)
+        records = handler.records
         compiler.loadSrcFilesFromCache = true
         compiler.bufferCache[snapshot.uri] = SrcCodeCacheInfo(snapshot.text)
+        for (peer in companions) { compiler.bufferCache[peer.uri] = SrcCodeCacheInfo(peer.text) }
         succeeded = compiler.Compile(stage: CompileStage.SEMA) && diagnostics.GetErrorCount() == 0
         if (succeeded) {
             for (sourcePackage in compiler.GetSourcePackages()) {

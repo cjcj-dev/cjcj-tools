@@ -70,6 +70,7 @@ public class DocumentStore {
     public func Get(uri: String): DocumentSnapshot {
         return documents.get(uri).getOrThrow()
     }
+    public func Snapshots(): Array<DocumentSnapshot> { return documents.values().toArray() }
     public func Close(uri: String): Unit { documents.remove(uri) }
     public func Change(uri: String, version: Int64, changes: Array<TextChange>): DocumentSnapshot {
         let previous = Get(uri)
