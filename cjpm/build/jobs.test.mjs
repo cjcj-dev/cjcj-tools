@@ -65,21 +65,21 @@ test('native public CLI rejects invalid jobs before any producer',()=>{
     assert.equal(r.status,2);assert.match(r.stderr,/jobs must be a positive integer/);assert.equal(r.calls.length,0);
   }
 });
-test('native public CLI returns native and C2 failure without starting dependents',()=>{
-  for(const [kind,pkg]of [['make',''],['cjc','config']]) {
+test('native public CLI returns C2 failure without starting dependents',()=>{
+  for(const [kind,pkg]of [['cjc','config'],['cjc','watcher']]) {
     const f=fixture(),r=invoke(f,['--jobs','2'],{JOBS_FAIL_KIND:kind,JOBS_FAIL_PACKAGE:pkg});
     assert.equal(r.status,37,r.stdout+'\n'+r.stderr);
-    assert.equal(r.calls.filter(c=>c.kind==='cjc').length,kind==='make'?0:3);
+    assert.equal(r.calls.filter(c=>c.kind==='cjc').length,pkg==='config'?3:4);
     assert(!fs.existsSync(path.join(f.cjpm,'dist/cjpm')));
   }
 });
 test('native-only control consumes jobs and skips C2',()=>{
   const r=invoke(fixture(),['--jobs','1','--native-only']);assert.equal(r.status,0,r.stderr);
-  assert.deepEqual(r.calls.map(c=>c.kind),['cmake','make']);assert.deepEqual(r.calls[1].args,['-j1']);
+  assert.deepEqual(r.calls,[],'retired native graph must not run');
 });
-test('independent legacy native-only control reaches native producer',()=>{
+test('independent native-only control is an empty dependency phase',()=>{
   const r=invoke(fixture(),['--native-only']);assert.equal(r.status,0,r.stderr);
-  assert.deepEqual(r.calls.map(c=>c.kind),['cmake','make']);assert.match(r.calls[1].args[0],/^-j[1-9]\d*$/);
+  assert.deepEqual(r.calls,[],'no C++ fallback');
 });
 test('real C2 through native public entry builds installs and runs dependent packages', {skip:!process.env.CJPM_TEST_SDK},()=>{
   const f=fixture({real:true}),r=invoke(f,['--jobs','4']);consumed(r,Math.min(4,budget));

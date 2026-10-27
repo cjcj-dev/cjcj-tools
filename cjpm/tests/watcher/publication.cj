@@ -13,10 +13,10 @@ main(args: Array<String>): Int64 {
     try {
         let root = args[0]
         let left=root+"/left/same.cjo.flag"; let right=root+"/right/same.cjo.flag"
-        createDirectory(root+"/left", recursive: true)
+        Directory.create(root+"/left", recursive: true)
         File.writeTo(left,"stale".toArray())
         let mutex=Mutex(); let seen=HashSet<String>(); var failed=false
-        let watcher=CjoPublicationWatcher([left,right],{ path => synchronized(mutex) { seen.add(path) } },{ => failed=true })
+        let watcher=CjoPublicationWatcher([left,right],{ path => synchronized(mutex) { seen.add(path); () } },{ => failed=true })
         check(!exists(left),"stale-before-dispatch")
         let worker=spawn { => watcher.run() }
         try {

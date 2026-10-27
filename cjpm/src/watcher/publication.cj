@@ -27,7 +27,7 @@ public class CjoPublicationWatcher {
             }
             let directory = Path(path).parent.toString()
             if (directory.isEmpty()) { throw IllegalArgumentException("Missing publication directory") }
-            if (!exists(directory)) { createDirectory(directory, recursive: true) }
+            if (!exists(directory)) { Directory.create(directory, recursive: true) }
             // A previous interrupted build's flag is not this build's event.
             // Preparation completes before any compiler task is dispatched.
             if (exists(path)) { remove(path) }
