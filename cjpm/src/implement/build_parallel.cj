@@ -22,16 +22,7 @@ import stdx.encoding.json.*
 
 import cjpm.config.*
 import cjpm.util.*
-
-// PIPELINE PARALLEL
-@When[(os != "iOS") && (env != "ohos") && (env != "android")]
-foreign func initFSWatcher(dirs: CString, cb: CFunc<(CString) -> Unit>, verbose: Bool): Bool
-
-@When[(os != "iOS") && (env != "ohos") && (env != "android")]
-foreign func startFSWatcher(verbose: Bool): Unit
-
-@When[(os != "iOS") && (env != "ohos") && (env != "android")]
-foreign func stopFSWatcher(verbose: Bool): Unit
+import cjpm.watcher.CjoPublicationWatcher
 
 private type MonitorChannel = LinkedBlockingQueue<MonitorNotification>
 
@@ -43,72 +34,6 @@ enum MonitorNotification {
     | Failed
     | FoundCjoFile
 }
-
-var cjoWatcherCb: (String) -> Unit = { _ => }
-
-@When[(os != "iOS") && (env != "ohos") && (env != "android")]
-func startCjoWatcher(verbose: Bool, ready: LinkedBlockingQueue<Bool>): Unit {
-    if (cjoFileToTaskId.isEmpty()) {
-        ready.add(false)
-        return
-    }
-    
-    let dirsToWatch = HashSet<String>()
-    for (cjoFilePath in cjoFileToTaskId.keys()) {
-        let dir = Path(cjoFilePath).parent.toString()
-        if (!dir.isEmpty()) {
-            dirsToWatch.add(dir)
-        }
-    }
-    
-    if (dirsToWatch.isEmpty()) {
-        ready.add(false)
-        return
-    }
-    
-    let dirs = StringBuilder()
-    for (dir in dirsToWatch) {
-        if (!exists(dir)) {
-            createDirectory(dir)
-        }
-        dirs.append("${dir},")
-    }
-    
-    cjoWatcherCb = { cjoFilePath =>
-        if (let Some(taskId) <- cjoFileToTaskId.get(cjoFilePath)) {
-            notifyMonitor(taskId, MonitorNotification.FoundCjoFile)
-        }
-    }
-    
-    unsafe {
-        let cs = LibC.mallocCString(dirs.toString())
-        let res = initFSWatcher(cs, { cjo => cjoWatcherCb(cjo.toString()) }, verbose)
-        LibC.free(cs)
-        if (!res) {
-            ready.add(false)
-            return
-        }
-        ready.add(true)
-        startFSWatcher(verbose)
-    }
-}
-
-@When[(os == "iOS") || (env == "ohos") || (env == "android")]
-func startCjoWatcher(_: Bool, ready: LinkedBlockingQueue<Bool>): Unit { ready.add(false) }
-
-@When[(os != "iOS") && (env != "ohos") && (env != "android")]
-func stopCjoWatcher(verbose: Bool): Unit {
-    unsafe { stopFSWatcher(verbose) }
-
-    for (cjoFilePath in cjoFileToTaskId.keys()) {
-        if (fileExists(cjoFilePath)) {
-            remove(cjoFilePath)
-        }
-    }
-}
-
-@When[(os == "iOS") || (env == "ohos") || (env == "android")]
-func stopCjoWatcher(_: Bool): Unit {}
 
 /**
  * Self-sufficient compilation unit. 
@@ -314,19 +239,20 @@ private func executeWithFileWatcher<T>(buildConfig: BuildConfig, body: () -> T):
         return body()
     }
 
-    let watcherReady = LinkedBlockingQueue<Bool>()
-    let cjoWatcherFuture = spawn { =>
-        startCjoWatcher(buildConfig.isVerbose, watcherReady)
-    }
-    let watcherStarted = watcherReady.remove()
-
+    if (cjoFileToTaskId.isEmpty()) { return body() }
+    let watcher = CjoPublicationWatcher(cjoFileToTaskId.keys().toArray(), { path =>
+        if (let Some(taskId) <- cjoFileToTaskId.get(path)) {
+            notifyMonitor(taskId, MonitorNotification.FoundCjoFile)
+        }
+    }, { =>
+        for (taskId in cjoFileToTaskId.values()) { notifyMonitor(taskId, MonitorNotification.Failed) }
+    })
+    let cjoWatcherFuture = spawn { => watcher.run() }
     let result = try {
         body()
     } finally {
-        if (watcherStarted) {
-            stopCjoWatcher(buildConfig.isVerbose)
-        }
-        let _ = cjoWatcherFuture.get()
+        watcher.stop()
+        try { let _ = cjoWatcherFuture.get() } finally { watcher.clean() }
     }
 
     result
