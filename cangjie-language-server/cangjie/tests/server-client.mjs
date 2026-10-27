@@ -14,7 +14,7 @@ async function client(label,body,expected){
  const closed=new Promise(resolve=>{p.on('error',error=>resolve({error:String(error)}));p.on('close',(rc,signal)=>{ended=true;resolve({rc,signal})});});
  p.stderr.on('data',b=>stderr+=b);p.stdout.on('data',chunk=>{data=Buffer.concat([data,chunk]);for(;;){const boundary=data.indexOf('\r\n\r\n');if(boundary<0)break;const header=data.subarray(0,boundary).toString();const match=/^Content-Length: (\d+)$/m.exec(header);assert(match,'stdout is framed JSON-RPC, no compiler chatter');const size=Number(match[1]);if(data.length<boundary+4+size)break;const value=JSON.parse(data.subarray(boundary+4,boundary+4+size));data=data.subarray(boundary+4+size);transcript.push({direction:"receive",value});queue.push(value);for(const wake of waiters.splice(0))wake();}});
  async function take(predicate){const deadline=Date.now()+45000;while(Date.now()<deadline){let index=queue.findIndex(predicate);if(index>=0)return queue.splice(index,1)[0];if(ended)throw Error('server ended before response '+stderr);await Promise.race([new Promise(resolve=>waiters.push(resolve)),new Promise(resolve=>setTimeout(resolve,20))]);}throw Error('response timeout '+JSON.stringify(queue)+' '+stderr);}
- const api={send:value=>{transcript.push({direction:"send",value});p.stdin.write(encode(value));},raw:bytes=>p.stdin.write(bytes),take,end:()=>p.stdin.end()};
+ const api={send:value=>{transcript.push({direction:"send",value});p.stdin.write(encode(value));},raw:bytes=>{transcript.push({direction:"send-bytes",base64:bytes.toString("base64")});p.stdin.write(bytes);},take,end:()=>p.stdin.end()};
  const timeout=setTimeout(()=>p.kill('SIGTERM'),120000);let failure;
  try{await body(api);const result=await closed;assert.equal(result.rc,expected,label);assert.equal(result.signal,null);cases.push({label,argv:[exe,'--sdk',sdk],started,ended:new Date().toISOString(),...result,stderr,pass:true});}
  catch(e){failure=e;if(!ended)p.kill('SIGTERM');const result=await closed;cases.push({label,started,ended:new Date().toISOString(),...result,stderr,pass:false,error:e.stack});}
@@ -54,6 +54,7 @@ await client('lifecycle-semantics',async c=>{
 },0);
 await client('exit-before-shutdown',async c=>{c.send(note('exit'));c.end()},1);
 await client('truncated-frame',async c=>{c.raw(Buffer.from('Content-Length: 90\r\n\r\n{}'));c.end()},2);
-console.log('LSP_SERVER_CLIENT_PASS processes=3 lifecycle/member/cross-file/diagnostic/UTF16/shutdown/error-exit');
 
 if(mode==='control')await client('independent-shutdown',async c=>{c.send(request('control-init','initialize'));assert((await c.take(x=>x.id==='control-init')).result.capabilities);c.send(request('control-stop','shutdown'));assert.equal((await c.take(x=>x.id==='control-stop')).result,null);c.send(note('exit'));c.end();},0);
+
+console.log('LSP_SERVER_CLIENT_PASS processes='+cases.length+' mode='+(mode??'all'));
