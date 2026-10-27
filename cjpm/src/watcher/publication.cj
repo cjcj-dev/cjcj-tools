@@ -5,14 +5,14 @@ import std.fs.*
 import std.sync.*
 import std.time.*
 
-// Compiler publication is a persistent .cjo.flag, removed only after the
-// build's watcher has joined. Observe exact task paths, not basename events:
-// unrelated files and same-name packages in different directories cannot wake
-// the wrong monitor. No native watcher or compiler-process token is owned here.
+// CJC creates and removes .cjo.flag during publication. Linux must retain the
+// kernel event even when the file no longer exists. Register before dispatching
+// compiler tasks, map exact paths, and join before releasing the event source.
 public class CjoPublicationWatcher {
     private let paths: Array<String>
     private let publish: (String) -> Unit
     private let failed: () -> Unit
+    private let events: CjoPublicationEvents
     private let mutex = Mutex()
     private var stopped = false
 
@@ -35,6 +35,7 @@ public class CjoPublicationWatcher {
                 remove(path)
             }
         }
+        events = CjoPublicationEvents(paths)
     }
 
     public func run(): Unit {
@@ -43,26 +44,20 @@ public class CjoPublicationWatcher {
             while (true) {
                 synchronized(mutex) {
                     if (stopped) { return }
-                    let published = ArrayList<String>()
-                    for (path in pending) {
-                        if (exists(path)) {
-                            if (!FileInfo(path).isRegular()) { throw IllegalStateException("Publication flag is not a file: "+path) }
-                            published.add(path)
+                    for (path in events.take()) {
+                        if (pending.contains(path)) {
+                            publish(path)
+                            pending.remove(path)
                         }
                     }
-                    for (path in published) {
-                        publish(path)
-                        pending.remove(path)
-                    }
                 }
-                // std.fs performs the platform system calls. Flags persist,
-                // so the bounded scan does not depend on lossy/coalesced events.
+                // Linux queues events independently of this bounded wake-up interval.
                 sleep(10 * Duration.millisecond)
             }
         } catch (error: Exception) {
             failed()
             throw error
-        }
+        } finally { events.close() }
     }
 
     public func stop(): Unit { synchronized(mutex) { stopped = true } }

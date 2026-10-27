@@ -24,7 +24,7 @@ import cjpm.config.*
 import cjpm.util.*
 import cjpm.watcher.CjoPublicationWatcher
 
-private type MonitorChannel = LinkedBlockingQueue<MonitorNotification>
+private type MonitorChannel = LinkedBlockingQueue<(MonitorNotification, String)>
 
 private let monitorChannels = ConcurrentHashMap<TaskId, MonitorChannel>()
 
@@ -242,10 +242,10 @@ private func executeWithFileWatcher<T>(buildConfig: BuildConfig, body: () -> T):
     if (cjoFileToTaskId.isEmpty()) { return body() }
     let watcher = CjoPublicationWatcher(cjoFileToTaskId.keys().toArray(), { path =>
         if (let Some(taskId) <- cjoFileToTaskId.get(path)) {
-            notifyMonitor(taskId, MonitorNotification.FoundCjoFile)
+            notifyMonitor(taskId, MonitorNotification.FoundCjoFile, source: "watcher")
         }
     }, { =>
-        for (taskId in cjoFileToTaskId.values()) { notifyMonitor(taskId, MonitorNotification.Failed) }
+        for (taskId in cjoFileToTaskId.values()) { notifyMonitor(taskId, MonitorNotification.Failed, source: "watcher") }
     })
     let cjoWatcherFuture = spawn { => watcher.run() }
     let result = try {
@@ -398,7 +398,7 @@ private func createArtifactGroup(compileTask: CompileTask, buildConfig: BuildCon
             let name = "${swapOrgName(compileTask.fullName)}.chir"
             ArtifactGroup(artifact(name, CheckTimestamp), cjo())
         case Obj => 
-            let name = makeTargetObjName(swapOrgName(compileTask.fullName), compileTask.target)
+            let name = getOutput(compileTask).getOrThrow()
             ArtifactGroup(artifact(name, CheckTimestamp), cjo())
         case Unknown(_) => ArtifactGroup(Artifact("", CheckExists), cjo())
     }
@@ -492,7 +492,10 @@ private func registerMonitorTask(engine: IncrementalEngine, compileTask: Compile
             return Artifact(cjoPath, CheckTimestamp)
         }
 
-        let result = channel.remove()
+        let (result, source) = channel.remove()
+        if (let Some(_) <- getVariable("CJPM_WAIT_DEPS_DIAG")) {
+            eprintln("[CJPM_MONITOR] source=${source} path=${cjoPath}")
+        }
         match (result) {
             case FoundCjoFile => 
                 let msg = "[Monitor] received 'FoundCjoFile' notification for ${cjoPath}\n"
@@ -1381,9 +1384,9 @@ extend Array<TaskResult> {
     }
 }
 
-private func notifyMonitor(taskId: TaskId, notification: MonitorNotification): Unit {
+private func notifyMonitor(taskId: TaskId, notification: MonitorNotification, source!: String = "completion"): Unit {
     if (let Some(queue) <- monitorChannels.get(taskId)) {
-        queue.add(notification)
+        queue.add((notification, source))
     }
 }
 
