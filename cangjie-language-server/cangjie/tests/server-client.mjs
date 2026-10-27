@@ -7,12 +7,13 @@ const [exe,sdk,directory,mode]=process.argv.slice(2);fs.mkdirSync(directory,{rec
 const cases=[];
 const encode=value=>{const body=typeof value==='string'?value:JSON.stringify(value);return Buffer.concat([Buffer.from(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n`),Buffer.from(body)]);};
 async function client(label,body,expected){
+ if(mode==='snapshot'&&label!=='error-snapshot-queries')return;
  if(mode==='control'&&label!=='independent-shutdown')return;
  if(mode==='target'&&label!=='lifecycle-semantics')return;
  const env={...process.env};for(const key of ['LD_LIBRARY_PATH','LD_PRELOAD','LD_AUDIT','CANGJIE_HOME','CANGJIE_PATH'])delete env[key];
  const started=new Date().toISOString(),p=spawn(exe,['--sdk',sdk],{env,stdio:['pipe','pipe','pipe']});let data=Buffer.alloc(0),stderr='',ended=false;const transcript=[];const queue=[],waiters=[];
  const closed=new Promise(resolve=>{p.on('error',error=>resolve({error:String(error)}));p.on('close',(rc,signal)=>{ended=true;resolve({rc,signal})});});
- p.stderr.on('data',b=>stderr+=b);p.stdout.on('data',chunk=>{data=Buffer.concat([data,chunk]);for(;;){const boundary=data.indexOf('\r\n\r\n');if(boundary<0)break;const header=data.subarray(0,boundary).toString();const match=/^Content-Length: (\d+)$/m.exec(header);assert(match,'stdout is framed JSON-RPC, no compiler chatter');const size=Number(match[1]);if(data.length<boundary+4+size)break;const value=JSON.parse(data.subarray(boundary+4,boundary+4+size));data=data.subarray(boundary+4+size);transcript.push({direction:"receive",value});queue.push(value);for(const wake of waiters.splice(0))wake();}});
+ p.stderr.on('data',b=>stderr+=b);p.stdout.on('data',chunk=>{transcript.push({direction:'receive-bytes',base64:chunk.toString('base64')});data=Buffer.concat([data,chunk]);for(;;){const boundary=data.indexOf('\r\n\r\n');if(boundary<0)break;const header=data.subarray(0,boundary).toString();const match=/^Content-Length: (\d+)$/m.exec(header);assert(match,'stdout is framed JSON-RPC, no compiler chatter');const size=Number(match[1]);if(data.length<boundary+4+size)break;const value=JSON.parse(data.subarray(boundary+4,boundary+4+size));data=data.subarray(boundary+4+size);transcript.push({direction:"receive",value});queue.push(value);for(const wake of waiters.splice(0))wake();}});
  async function take(predicate){const deadline=Date.now()+45000;while(Date.now()<deadline){let index=queue.findIndex(predicate);if(index>=0)return queue.splice(index,1)[0];if(ended)throw Error('server ended before response '+stderr);await Promise.race([new Promise(resolve=>waiters.push(resolve)),new Promise(resolve=>setTimeout(resolve,20))]);}throw Error('response timeout '+JSON.stringify(queue)+' '+stderr);}
  const api={send:value=>{transcript.push({direction:"send",value});p.stdin.write(encode(value));},raw:bytes=>{transcript.push({direction:"send-bytes",base64:bytes.toString("base64")});p.stdin.write(bytes);},take,end:()=>p.stdin.end()};
  const timeout=setTimeout(()=>p.kill('SIGTERM'),120000);let failure;
@@ -54,6 +55,40 @@ await client('lifecycle-semantics',async c=>{
 },0);
 await client('exit-before-shutdown',async c=>{c.send(note('exit'));c.end()},1);
 await client('truncated-frame',async c=>{c.raw(Buffer.from('Content-Length: 90\r\n\r\n{}'));c.end()},2);
+
+
+// Same resolved positions are queried before, during and after a real SEMA
+// error. A null response cannot pass solely because the position had no index.
+await client('error-snapshot-queries',async c=>{
+ c.send(request('snapshot-init','initialize'));assert((await c.take(x=>x.id==='snapshot-init')).result.capabilities);
+ c.send(note('initialized'));
+ c.send(note('textDocument/didOpen',{textDocument:{uri,languageId:'cangjie',version:1,text}}));
+ assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri&&x.params.version===1)).params.diagnostics,[]);
+ c.send(note('textDocument/didOpen',{textDocument:{uri:other,languageId:'cangjie',version:1,text:peer}}));
+ assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===other)).params.diagnostics,[]);
+ async function query(id,method,document,position){
+  c.send(request(id,method,{textDocument:{uri:document},position,...(method.endsWith('/references')?{context:{includeDeclaration:false}}:{})}));
+  const reply=await c.take(x=>x.id===id);assert.equal(reply.error,undefined);assert(Object.hasOwn(reply,'result'));return reply.result;
+ }
+ async function validQueries(prefix){
+  const definition=await query(prefix+'-definition','textDocument/definition',other,pos(peer,'answer()'));
+  assert(definition,'LSP_VALID_SNAPSHOT_DEFINITION_CONTROL');assert.equal(definition.uri,uri);assert.deepEqual(definition.range.start,pos(text,'answer()'));
+  const references=await query(prefix+'-references','textDocument/references',uri,pos(text,'answer()'));
+  assert.equal(references.length,1,'LSP_VALID_SNAPSHOT_REFERENCES_CONTROL');assert.equal(references[0].uri,other);assert.deepEqual(references[0].range.start,pos(peer,'answer()'));
+ }
+ await validQueries('before');
+ c.send(note('textDocument/didChange',{textDocument:{uri,version:2},contentChanges:[{text:text.replace('return 42','return true')}]}));
+ const broken=await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri&&x.params.version===2);
+ assert(broken.params.diagnostics.some(x=>x.severity===1&&x.message.length>0),'LSP_ERROR_SNAPSHOT_DIAGNOSTIC_REACHED');
+ for(const [tag,document,at] of [['changed',uri,pos(text,'answer()')],['dependent',other,pos(peer,'answer()')]]){
+  assert.equal(await query('bad-'+tag+'-definition','textDocument/definition',document,at),null,'LSP_ERROR_SNAPSHOT_DEFINITION_REJECT '+tag);
+  assert.equal(await query('bad-'+tag+'-references','textDocument/references',document,at),null,'LSP_ERROR_SNAPSHOT_REFERENCES_REJECT '+tag);
+ }
+ c.send(note('textDocument/didChange',{textDocument:{uri,version:3},contentChanges:[{text}]}));
+ assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri&&x.params.version===3)).params.diagnostics,[]);
+ await validQueries('restored');
+ c.send(request('snapshot-shutdown','shutdown'));assert.equal((await c.take(x=>x.id==='snapshot-shutdown')).result,null);c.send(note('exit'));c.end();
+},0);
 
 if(mode==='control')await client('independent-shutdown',async c=>{c.send(request('control-init','initialize'));assert((await c.take(x=>x.id==='control-init')).result.capabilities);c.send(request('control-stop','shutdown'));assert.equal((await c.take(x=>x.id==='control-stop')).result,null);c.send(note('exit'));c.end();},0);
 
