@@ -141,6 +141,9 @@ class Server {
             let semantic = SemanticDocument(snapshot, sdk, companions: peers.toArray())
             semantics[snapshot.uri] = semantic
             let items = ArrayList<JsonValue>()
+            var hasError = false
+            Console.stdErr.writeln("LSP_ANALYSIS sdk=" + sdk + " file=" + snapshot.uri +
+                " succeeded=" + semantic.succeeded.toString() + " errors=" + semantic.diagnostics.GetErrorCount().toString())
             for (diag in semantic.records) {
                 let begin = if (diag.isRefactor) { diag.mainHint.range.begin } else { diag.start }
                 let end = if (diag.isRefactor) { diag.mainHint.range.end } else { diag.end }
@@ -168,8 +171,17 @@ class Server {
                     case DiagSeverity.DS_NOTE => 3
                     case _ => 4
                 }
+                if (severity == 1) { hasError = true }
                 items.add(object([("range", rangeJson(first, last)),
                     ("severity", JsonInt(severity)), ("source", JsonString("cangjie")), ("message", JsonString(message))]))
+            }
+            if (!semantic.succeeded && !hasError) {
+                // This reports the actual Compile result, not a guessed type
+                // error. A failure located in another file still invalidates
+                // this snapshot and must not look like successful analysis.
+                items.add(object([("range", rangeJson(ProtocolPosition(0, 0), ProtocolPosition(0, 0))),
+                    ("severity", JsonInt(1)), ("source", JsonString("cangjie")),
+                    ("message", JsonString("Frontend analysis failed; see compiler diagnostics for this snapshot"))]))
             }
             if (let Some(version) <- openVersions.get(snapshot.uri)) { publish(snapshot.uri, version, items.toArray()) }
         }
