@@ -4,7 +4,7 @@ import std.collection.*
 import cangjie_lsp_protocol.*
 import cjcj::ast.{Node, Decl, RefExpr, MemberAccess, Identifier, Walker, VisitAction}
 import cjcj::basic.DiagnosticEngine as BasicDiagnosticEngine
-import cjcj::basic.{Diagnostic, DiagnosticHandler, DiagHandlerKind}
+import cjcj::basic.{Diagnostic, DiagnosticHandler, DiagHandlerKind, DiagSeverity}
 import cjcj::frontend.{CompilerInvocation, CompilerInstance, CompileStage, DiagnosticEngine, SrcCodeCacheInfo}
 
 public class SemanticLocation {
@@ -19,7 +19,16 @@ public class SemanticLocation {
 private class ServerDiagnosticHandler <: DiagnosticHandler {
     public let records = ArrayList<Diagnostic>()
     public init(engine: BasicDiagnosticEngine) { super(engine, DiagHandlerKind.LSP_HANDLER) }
-    public override func HandleDiagnose(item: Diagnostic): Unit { synchronized(mtx) { records.add(item) } }
+    public override func HandleDiagnose(item: Diagnostic): Unit {
+        // DiagnosticHandler owns counting in the frontend contract. Retaining
+        // wire diagnostics alone must not make a failed SEMA snapshot succeed.
+        if (item.diagSeverity == DiagSeverity.DS_ERROR) {
+            diag.IncreaseErrorCount(item.diagCategory)
+        } else if (item.diagSeverity == DiagSeverity.DS_WARNING) {
+            diag.IncreaseWarningCount(item.diagCategory)
+        }
+        synchronized(mtx) { records.add(item) }
+    }
 }
 
 private class BoundOccurrence {
