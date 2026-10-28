@@ -66,6 +66,12 @@ await client('project-stdio',async c=>{
  c.drain();c.send(note('workspace/didChangeWatchedFiles',{changes:[{uri:uri(cjo),type:1}]}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(app)&&x.params.diagnostics.length===0);
  assert.equal((await query('cjo-restored','definition',app,'forwarded()')).uri,uri(helper));
  }
+ if(mode==='project'&&read(app).includes('configured()')){
+  assert.equal((await query('configured-on','definition',app,'configured()')).uri,uri(app));c.drain();
+  c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:project+'/compile-disabled.json'}}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(app));
+  assert.equal(await query('configured-off','definition',app,'configured()'),null,'PROJECT_ACTUAL_TARGET_CONDITION');c.drain();
+  c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:database}}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(app));assert.equal((await query('configured-restored','definition',app,'configured()')).uri,uri(app));
+ }
  c.send(request('stop','shutdown'));assert.equal((await c.take(x=>x.id==='stop')).result,null);c.send(note('exit'));c.end();
 },0);
 console.log('PROJECT_STDIO_TARGET_RESTORED');
