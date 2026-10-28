@@ -8,6 +8,7 @@ package cjpm.implement
 
 import std.collection.*
 import std.time.*
+import std.sort.*
 import std.convert.*
 import std.env.*
 import std.fs.*
@@ -157,12 +158,25 @@ public func doBuild(buildConfig: BuildConfig): Bool {
 
 // Build command entry point. Parse once; dependency resolution creates its own mutable config from the document.
 public func doTopLevelBuild(buildConfig: BuildConfig): Bool {
+    if (!buildConfig.exportCompileCommands.isEmpty()) {
+        buildConfig.exportCompileCommands = getPath(canonicalize(".").toString(), buildConfig.exportCompileCommands)
+        // A failed current build must not leave the previous graph usable.
+        if (exists(buildConfig.exportCompileCommands)) { remove(buildConfig.exportCompileCommands) }
+    }
     let document = loadModuleDocument(buildConfig.globalConfig.rootPath) ?? return false
     let tomlInfo = document.toTomlInfo() ?? return false
     state.setExperimental(tomlInfo.profile.isExperimental)
     recordCjpmBuildStartTime(tomlInfo)
     let buildRes = doBuild(tomlInfo, buildConfig, isScriptDep: false, rootTomlDocument: document)
     recordCjpmBuildEndTime(tomlInfo, buildConfig.globalConfig.compilePerformanceTargetDir)
+    if (buildRes && !buildConfig.exportCompileCommands.isEmpty()) {
+        let keys = buildConfig.compileCommands.keys().toArray()
+        sort(keys)
+        let records = keys.map { key => buildConfig.compileCommands[key] }
+        let destination = buildConfig.exportCompileCommands
+        if (!createAndWriteFile(destination + ".tmp", "[" + String.join(records, delimiter: ",") + "]")) { return false }
+        rename(destination + ".tmp", to: destination, overwrite: true)
+    }
     return buildRes
 }
 

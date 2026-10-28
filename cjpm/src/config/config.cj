@@ -860,6 +860,9 @@ public enum CjcParallelConfig {
 }
 
 public class BuildConfig <: CommandConfig {
+    public var exportCompileCommands: String = ""
+    public let compileCommands = HashMap<String, String>()
+    public let compileCommandsMutex = Mutex()
     public var globalConfig: GlobalConfig = GlobalConfig()
 
     public var isCompilePipelineParallel: Bool = false

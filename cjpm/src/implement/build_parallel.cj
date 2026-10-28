@@ -222,6 +222,16 @@ func parallelBuild(module: ModuleResolve, buildConfig: BuildConfig): Bool {
         engine.execute()
     }
 
+    if (!buildConfig.exportCompileCommands.isEmpty()) {
+        // Export every selected compile task, including cache hits, using the
+        // compiler argument builder. Runtime scheduler -j admission is not
+        // a semantic input and is deliberately not part of the database.
+        for (task in compileTasksData) {
+            let args = constructCjcInvocation(task, buildConfig)
+            recordCompileCommand(task, args, buildConfig)
+        }
+    }
+
     buildConfig.rebuildList = collectRebuildList(engine)
 
     if (!buildConfig.rebuildList.isEmpty()) {
@@ -517,11 +527,37 @@ private func registerMonitorTask(engine: IncrementalEngine, compileTask: Compile
     task.logFiles = (outLogFile, errLogFile)
 }
 
+// Standard compilation database, from selected tasks (never history/log scraping).
+private func recordCompileCommand(task: CompileTask, args: ArrayList<String>, config: BuildConfig): Unit {
+    if (config.exportCompileCommands.isEmpty() || task.prevStageObj.isSome()) { return }
+    let arguments = ArrayList<JsonValue>([JsonString(state.cjcPath)])
+    for (arg in args) { arguments.add(JsonString(arg)) }
+    let directory = canonicalize(".").toString()
+    synchronized(config.compileCommandsMutex) {
+        for (file in PackageSource(Path(task.packagePath)).files()) {
+            let row = JsonObject()
+            row.put("directory", JsonString(directory))
+            row.put("file", JsonString(file.path.toString()))
+            row.put("arguments", JsonArray(arguments))
+            if (let Some(output) <- getOutput(task)) {
+                row.put("output", JsonString(Path(task.targetPath).join(output).toString()))
+            }
+            config.compileCommands[task.id.toString() + "|" + file.path.toString()] = row.toString()
+        }
+    }
+}
+
 // TASK OUTPUTS
 private struct PackageSource <: Serializable<PackageSource> {
     PackageSource(
         let dirpath: Path
     ) { }
+
+    public func files(): Array<FileInfo> {
+        return Directory.readFrom(dirpath).iterator()
+            .filter { it => it.isRegular() && it.name.endsWith(".cj") && !it.name.endsWith("_test.cj") }
+            .map { it => FileInfo(canonicalize(it.path)) } |> collectArray
+    }
 
     public func serialize(): DataModel {
         dirpath.toString().serialize()
@@ -1952,7 +1988,6 @@ private func addEndTime(fullName: String): Unit {
 // COMPILER PARALLELIZATION
 private func specifyCjcJobs(args: ArrayList<String>, cjcParallelConfig: CjcParallelConfig): Unit {
     CUR_PARALLEL_SIZE.fetchAdd(1)
-
     if (futJudge(args)) {
         return
     }
