@@ -188,7 +188,10 @@ class RenameTransaction {
                 if (nextSources.contains(decl.path)) { id = decl.path + ":" + ProtocolOffset(nextSources[decl.path].text, decl.start).toString() + ":" + resolved.kind }
             }
             let key = loc.path + ":" + at.toString() + ":" + binding.isDeclaration.toString()
-            if (after.contains(key) && after[key] != id) { throw IllegalArgumentException("Ambiguous candidate binding") }
+            if (after.contains(key) && after[key] != id) {
+                Console.stdErr.writeln("LSP_RENAME_BINDING_CONFLICT package=" + doc.SourcePackageName() + " location=" + key + " previous=" + after[key] + " next=" + id + " symbol=" + binding.name + " export=" + binding.exportKey)
+                throw IllegalArgumentException("Ambiguous candidate binding")
+            }
             after[key] = id
         } }
         let beforeKeys = HashSet<String>()
