@@ -22,7 +22,7 @@ async function client(label,body,expected,selectedSdk=sdk){
  const closed=new Promise(resolve=>{p.on('error',error=>resolve({error:String(error)}));p.on('close',(rc,signal)=>{ended=true;resolve({rc,signal})});});
  p.stderr.on('data',b=>stderr+=b);p.stdout.on('data',chunk=>{transcript.push({direction:'receive-bytes',base64:chunk.toString('base64')});data=Buffer.concat([data,chunk]);for(;;){const boundary=data.indexOf('\r\n\r\n');if(boundary<0)break;const header=data.subarray(0,boundary).toString();const match=/^Content-Length: (\d+)$/m.exec(header);assert(match,'stdout is framed JSON-RPC, no compiler chatter');const size=Number(match[1]);if(data.length<boundary+4+size)break;const value=JSON.parse(data.subarray(boundary+4,boundary+4+size));data=data.subarray(boundary+4+size);transcript.push({direction:"receive",value});queue.push(value);for(const wake of waiters.splice(0))wake();}});
  async function take(predicate){const deadline=Date.now()+45000;while(Date.now()<deadline){let index=queue.findIndex(predicate);if(index>=0)return queue.splice(index,1)[0];if(ended)throw Error('server ended before response '+stderr);await Promise.race([new Promise(resolve=>waiters.push(resolve)),new Promise(resolve=>setTimeout(resolve,20))]);}throw Error('response timeout '+JSON.stringify(queue)+' '+stderr);}
- const api={send:value=>{transcript.push({direction:"send",value});p.stdin.write(encode(value));},raw:bytes=>{transcript.push({direction:"send-bytes",base64:bytes.toString("base64")});p.stdin.write(bytes);},take,end:()=>p.stdin.end()};
+ const api={send:value=>{transcript.push({direction:"send",value});p.stdin.write(encode(value));},raw:bytes=>{transcript.push({direction:"send-bytes",base64:bytes.toString("base64")});p.stdin.write(bytes);},take,drain:()=>queue.splice(0),end:()=>p.stdin.end()};
  const timeout=setTimeout(()=>p.kill('SIGTERM'),120000);let failure;
  try{await body(api);const result=await closed;assert.equal(result.rc,expected,label);assert.equal(result.signal,null);cases.push({label,argv:[exe,'--sdk',selectedSdk],started,ended:new Date().toISOString(),...result,stderr,pass:true});}
  catch(e){failure=e;if(!ended)p.kill('SIGTERM');const result=await closed;cases.push({label,started,ended:new Date().toISOString(),...result,stderr,pass:false,error:e.stack});}
@@ -39,6 +39,7 @@ await client('project-stdio',async c=>{
  async function change(p,version,text){c.send(note('textDocument/didChange',{textDocument:{uri:uri(p),version},contentChanges:[{text}]}));return (await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(p)&&x.params.version===version)).params.diagnostics;}
  async function query(id,method,p,needle){c.send(request(id,'textDocument/'+method,{textDocument:{uri:uri(p)},position:pos(read(p),needle),context:{includeDeclaration:false}}));const r=await c.take(x=>x.id===id);assert.equal(r.error,undefined);return r.result;}
  assert.deepEqual(await open(app),[],'PROJECT_IMPORT_TARGET');
+ if(mode!=='project-config'&&mode!=='project-control'){
  const d=await query('direct','definition',app,'forwarded()');assert(d,'PROJECT_SOURCE_DEFINITION');assert.equal(d.uri,uri(helper));
  assert.deepEqual(await open(helper),[]);const trans=await query('transitive','definition',helper,'diskAnswer()');assert.equal(trans.uri,uri(leaf));
  assert.deepEqual(await open(leaf),[]);const refs=await query('refs','references',leaf,'diskAnswer()');assert.equal(refs.length,1);assert.equal(refs[0].uri,uri(helper));
@@ -48,8 +49,23 @@ await client('project-stdio',async c=>{
  assert.deepEqual(await change(app,3,read(app)),[]);
  const outside=project+'/ignored/value.cj';assert((await open(outside)).some(d=>d.severity===1&&/outside/.test(d.message)));assert.equal(await query('outside','definition',outside,'diskAnswer()'),null);
  c.send(note('textDocument/didClose',{textDocument:{uri:uri(helper)}}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(helper));assert.equal((await query('close','definition',app,'forwarded()')).uri,uri(helper));
+ }
+ if(mode==='project-control'){
+  assert.deepEqual(await open(control),[],'PROJECT_INDEPENDENT_CONTROL');
+ }else{
+ c.send(request('barrier','textDocument/definition',{textDocument:{uri:uri(app)},position:pos(read(app),'forwarded()')}));await c.take(x=>x.id==='barrier');c.drain();
  c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:database+'.missing'}}));const missing=await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(app));assert(missing.params.diagnostics.some(d=>d.severity===1));assert.equal(await query('missing-graph','definition',app,'forwarded()'),null);
- c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:database}}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(app)&&x.params.diagnostics.length===0);assert.equal((await query('config-restored','definition',app,'forwarded()')).uri,uri(helper));
+ c.drain();c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:database}}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(app)&&x.params.diagnostics.length===0);assert.equal((await query('config-restored','definition',app,'forwarded()')).uri,uri(helper));
+ const entries=JSON.parse(read(database)),helperEntry=entries.find(e=>e.file===helper),cjo=path.join(path.dirname(helperEntry.output),'project_helper.cjo');
+ c.drain();fs.renameSync(cjo,cjo+'.held');try{
+  c.send(note('workspace/didChangeWatchedFiles',{changes:[{uri:uri(cjo),type:3}]}));
+  const missingCjo=await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(app));assert(missingCjo.params.diagnostics.some(d=>d.severity===1),'PROJECT_MISSING_CJO_TARGET');
+  assert.equal(await query('missing-cjo-query','definition',app,'forwarded()'),null);
+  assert.deepEqual(await open(control,2),[],'PROJECT_MISSING_CJO_CONTROL');
+ }finally{fs.renameSync(cjo+'.held',cjo);}
+ c.drain();c.send(note('workspace/didChangeWatchedFiles',{changes:[{uri:uri(cjo),type:1}]}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(app)&&x.params.diagnostics.length===0);
+ assert.equal((await query('cjo-restored','definition',app,'forwarded()')).uri,uri(helper));
+ }
  c.send(request('stop','shutdown'));assert.equal((await c.take(x=>x.id==='stop')).result,null);c.send(note('exit'));c.end();
 },0);
 console.log('PROJECT_STDIO_TARGET_RESTORED');
