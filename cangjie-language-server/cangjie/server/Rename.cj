@@ -30,9 +30,11 @@ class RenameTransaction {
     let graph: Option<ProjectGraph>
     let edits = ArrayList<RenameEdit>()
     let oldExports = HashMap<String, SemanticBinding>()
-    let target: SemanticBinding
-    let targetKey: String
-    let requestLocation: SemanticLocation
+    private var selectedTarget: Option<SemanticBinding> = None
+    private var selectedLocation: Option<SemanticLocation> = None
+    prop target: SemanticBinding { get() { return selectedTarget.getOrThrow() } }
+    prop requestLocation: SemanticLocation { get() { return selectedLocation.getOrThrow() } }
+    var targetKey = ""
     let newName: String
     var temporary = ""
 
@@ -64,8 +66,8 @@ class RenameTransaction {
             }
         }
         let selected = hit.getOrThrow()
-        requestLocation = selected.location
-        target = if (!selected.exportKey.isEmpty() && oldExports.contains(selected.exportKey)) { oldExports[selected.exportKey] } else { selected }
+        selectedLocation = Some(selected.location)
+        selectedTarget = Some(if (!selected.exportKey.isEmpty() && oldExports.contains(selected.exportKey)) { oldExports[selected.exportKey] } else { selected })
         if (!target.canRename || target.declaration.isNone() || !sources.contains(target.declaration.getOrThrow().path)) {
             throw IllegalArgumentException("Rename target has no complete editable source binding")
         }
@@ -130,7 +132,7 @@ class RenameTransaction {
             if (result.isNull()) { throw IllegalStateException("Cannot create candidate CJO directory") }
         } finally { unsafe { releaseArrayRawData(handle) } }
         temporary = String.fromUtf8(pattern[0..pattern.size - 1])
-        try { validatePackages() } finally { Directory.delete(temporary, recursive: true) }
+        try { validatePackages() } finally { remove(temporary, recursive: true) }
     }
     func validatePackages(): Unit {
         let packages = HashMap<String, SemanticDocument>()
