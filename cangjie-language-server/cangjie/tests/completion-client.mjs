@@ -164,5 +164,16 @@ if(mode==='lifecycle')await client('completion-lifecycle',async c=>{
  const broken=buffer.replace('Bool = true','Bool = 42');assert((await change(c,helper,broken,3)).some(x=>x.severity===1));assert.equal((await complete(c,helper,at)).error?.code,-32602,'COMPLETION_NO_STALE_ERROR_RESULT');
  assert.deepEqual(await change(c,helper,buffer,4),[]);await checkBool();
  c.send(note('textDocument/didClose',{textDocument:{uri:uri(helper)}}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(helper)&&x.params.version===4);
- const diskPoint=position(disk,'answer()');diskPoint.character+=2;const r=await complete(c,helper,diskPoint);assert.equal(r.error,undefined,'COMPLETION_CLOSE_DISK');const restored=r.result.items.find(x=>x.label==='answer');assert(restored?.detail.includes('Int64'));assert(!restored.detail.includes('Bool'));await finish(c);
+ const diskPoint=position(disk,'answer()');diskPoint.character+=2;const r=await complete(c,helper,diskPoint);assert.equal(r.error,undefined,'COMPLETION_CLOSE_DISK');const restored=r.result.items.find(x=>x.label==='answer');assert(restored?.detail.includes('Int64'));assert(!restored.detail.includes('Bool'));
+ assert.deepEqual(await open(c,helper,buffer,5),[]);await checkBool();
+ c.send(note('textDocument/didClose',{textDocument:{uri:uri(helper)}}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(helper)&&x.params.version===5);
+ const changedDisk='package completion_helper\npublic func forwarded(): Int64 { let diskValue: Int64 = 42; diskValue }\n';
+ fs.writeFileSync(directory+'/refreshed-disk.cj',changedDisk);fs.writeFileSync(helper,changedDisk);
+ try{
+  c.send(note('workspace/didChangeWatchedFiles',{changes:[{uri:uri(helper),type:2}]}));
+  const point=position(changedDisk,'diskValue',1);point.character+=4;
+  const r=await complete(c,helper,point);assert.equal(r.error,undefined,'COMPLETION_DISK_REFRESH');assert.equal(r.result.items.find(x=>x.label==='diskValue')?.detail,'diskValue: Int64');
+ }finally{fs.writeFileSync(helper,disk);c.send(note('workspace/didChangeWatchedFiles',{changes:[{uri:uri(helper),type:2}]}));}
+ const unknown=await complete(c,project+'/not-selected.cj',{line:0,character:0});assert.equal(unknown.error?.code,-32602,'COMPLETION_UNKNOWN_DOCUMENT_REJECT');
+ await finish(c);
 },0);
