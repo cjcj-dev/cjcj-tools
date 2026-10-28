@@ -3,6 +3,7 @@ package cangjie_lsp_core
 import std.collection.*
 import cangjie_lsp_protocol.*
 import cjcj::ast.*
+import cjcj::ast.File as ASTFile
 import cjcj::lex.{Lexer, TokenKind}
 import cjcj::basic.SourceManager
 import cjcj::mangle.BaseMangler
@@ -135,7 +136,7 @@ public class SemanticDocument {
         }
     }
 
-    private func collectImport(file: cjcj::ast.File, content: ImportContent): Unit {
+    private func collectImport(file: ASTFile, content: ImportContent): Unit {
         if (content.kind == ImportKind.IMPORT_MULTI) {
             for (item in content.items) { collectImport(file, item) }; return
         }
