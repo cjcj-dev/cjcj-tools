@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {spawn,spawnSync} from 'node:child_process';
-import {pathToFileURL} from 'node:url';
+import {pathToFileURL,fileURLToPath} from 'node:url';
 const [exe,sdk,directory,project,mode='basic']=process.argv.slice(2);
 fs.mkdirSync(directory,{recursive:true});
 const cases=[];
@@ -23,6 +23,9 @@ async function client(label,body,expected,selectedSdk=sdk){
 
 const request=(id,method,params={})=>({jsonrpc:'2.0',id,method,params}),note=(method,params={})=>({jsonrpc:'2.0',method,params});
 const uri=p=>pathToFileURL(p).href;
+// URI spellings may differ in percent-encoding of reserved path characters.
+// Match the actual file identity, while still rejecting a different document.
+const sameUri=(a,b)=>fileURLToPath(a)===fileURLToPath(b);
 const position=(text,needle,n=0)=>{let i=-1;for(let k=0;k<=n;k++){i=text.indexOf(needle,i+1);assert(i>=0,needle);}const lines=text.slice(0,i).split('\n');return {line:lines.length-1,character:lines.at(-1).length};};
 
 function buildProject(label){
@@ -37,8 +40,8 @@ function buildProject(label){
 let serial=0;
 async function finish(c){c.send(request('stop','shutdown'));assert.equal((await c.take(x=>x.id==='stop')).result,null);c.send(note('exit'));c.end();}
 async function init(c,opts={}){c.send(request('init','initialize',opts));const r=await c.take(x=>x.id==='init');assert.deepEqual(r.result.capabilities.completionProvider.triggerCharacters,['.']);c.send(note('initialized'));}
-async function open(c,p,text,version=1){c.send(note('textDocument/didOpen',{textDocument:{uri:uri(p),languageId:'cangjie',version,text}}));return (await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(p)&&x.params.version===version)).params.diagnostics;}
-async function change(c,p,text,version){c.send(note('textDocument/didChange',{textDocument:{uri:uri(p),version},contentChanges:[{text}]}));return (await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(p)&&x.params.version===version)).params.diagnostics;}
+async function open(c,p,text,version=1){c.send(note('textDocument/didOpen',{textDocument:{uri:uri(p),languageId:'cangjie',version,text}}));return (await c.take(x=>x.method==='textDocument/publishDiagnostics'&&sameUri(x.params.uri,uri(p))&&x.params.version===version)).params.diagnostics;}
+async function change(c,p,text,version){c.send(note('textDocument/didChange',{textDocument:{uri:uri(p),version},contentChanges:[{text}]}));return (await c.take(x=>x.method==='textDocument/publishDiagnostics'&&sameUri(x.params.uri,uri(p))&&x.params.version===version)).params.diagnostics;}
 function marked(input){const index=input.indexOf('|');assert(index>=0);const text=input.slice(0,index)+input.slice(index+1),lines=text.slice(0,index).split('\n');return {text,point:{line:lines.length-1,character:lines.at(-1).length}};}
 async function complete(c,p,point){const id='q'+(++serial);c.send(request(id,'textDocument/completion',{textDocument:{uri:uri(p)},position:point}));return await c.take(x=>x.id===id);}
 function offset(text,p){const lines=text.split('\n');return lines.slice(0,p.line).reduce((n,s)=>n+s.length+1,0)+p.character;}
@@ -111,10 +114,10 @@ if(mode==='project')await client('completion-project',async c=>{
  }
  const module=project+'/target/release/completion_leaf/completion_leaf.cjo';const hidden=module+'.completion-missing';assert(fs.existsSync(module));assert(!fs.existsSync(hidden));fs.renameSync(module,hidden);
  try{
-  c.drain();c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:db}}));const d=(await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(helper))).params.diagnostics;assert(d.some(x=>x.severity===1));
+  c.drain();c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:db}}));const d=(await c.take(x=>x.method==='textDocument/publishDiagnostics'&&sameUri(x.params.uri,uri(helper)))).params.diagnostics;assert(d.some(x=>x.severity===1));
   const text=fs.readFileSync(helper,'utf8');const result=await complete(c,helper,position(text,'answer()'));assert(result.error,'COMPLETION_MISSING_CJO_REJECT');assert.equal(result.result,undefined);
  }finally{fs.renameSync(hidden,module);}
- c.drain();c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:db}}));assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(helper))).params.diagnostics,[]);
+ c.drain();c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:db}}));assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&sameUri(x.params.uri,uri(helper)))).params.diagnostics,[]);
  const text=fs.readFileSync(helper,'utf8');assert.equal((await complete(c,helper,position(text,'answer()'))).error,undefined,'COMPLETION_RESTORED_CJO');
  await finish(c);
 },0);
@@ -150,7 +153,7 @@ if(mode==='definition-control')await client('completion-definition-control',asyn
  const p=directory+'/definition.cj',text='package definition_control\nfunc use(answer: Int64): Int64 { answer }\n';fs.writeFileSync(p,text);
  await init(c);assert.deepEqual(await open(c,p,text),[]);
  c.send(request('definition','textDocument/definition',{textDocument:{uri:uri(p)},position:position(text,'answer',1)}));
- const found=(await c.take(x=>x.id==='definition')).result;assert.equal(found.uri,uri(p));assert.deepEqual(found.range.start,position(text,'answer'));await finish(c);
+ const found=(await c.take(x=>x.id==='definition')).result;assert(sameUri(found.uri,uri(p)));assert.deepEqual(found.range.start,position(text,'answer'));await finish(c);
 },0);
 if(mode==='lifecycle')await client('completion-lifecycle',async c=>{
  const db=project+'/compile_commands.json',helper=project+'/helper/src/lib.cj',disk=fs.readFileSync(helper,'utf8');
@@ -163,10 +166,10 @@ if(mode==='lifecycle')await client('completion-lifecycle',async c=>{
  const invalid=position(buffer,'😀');invalid.character++;assert.equal((await complete(c,helper,invalid)).error?.code,-32602,'COMPLETION_INVALID_UTF16');
  const broken=buffer.replace('Bool = true','Bool = 42');assert((await change(c,helper,broken,3)).some(x=>x.severity===1));assert.equal((await complete(c,helper,at)).error?.code,-32602,'COMPLETION_NO_STALE_ERROR_RESULT');
  assert.deepEqual(await change(c,helper,buffer,4),[]);await checkBool();
- c.send(note('textDocument/didClose',{textDocument:{uri:uri(helper)}}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(helper)&&x.params.version===4);
+ c.send(note('textDocument/didClose',{textDocument:{uri:uri(helper)}}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&sameUri(x.params.uri,uri(helper))&&x.params.version===4);
  const diskPoint=position(disk,'answer()');diskPoint.character+=2;const r=await complete(c,helper,diskPoint);assert.equal(r.error,undefined,'COMPLETION_CLOSE_DISK');const restored=r.result.items.find(x=>x.label==='answer');assert(restored?.detail.includes('Int64'));assert(!restored.detail.includes('Bool'));
  assert.deepEqual(await open(c,helper,buffer,5),[]);await checkBool();
- c.send(note('textDocument/didClose',{textDocument:{uri:uri(helper)}}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(helper)&&x.params.version===5);
+ c.send(note('textDocument/didClose',{textDocument:{uri:uri(helper)}}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&sameUri(x.params.uri,uri(helper))&&x.params.version===5);
  const changedDisk='package completion_helper\npublic func forwarded(): Int64 { let diskValue: Int64 = 42; diskValue }\n';
  fs.writeFileSync(directory+'/refreshed-disk.cj',changedDisk);fs.writeFileSync(helper,changedDisk);
  try{
