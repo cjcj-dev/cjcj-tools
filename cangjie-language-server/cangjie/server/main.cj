@@ -275,7 +275,8 @@ class Server {
                 ("textDocumentSync", object([("openClose", JsonBool(true)), ("change", JsonInt(2))])),
                 ("definitionProvider", JsonBool(true)), ("referencesProvider", JsonBool(true)),
                 ("documentHighlightProvider", JsonBool(true)), ("hoverProvider", JsonBool(true)),
-                ("renameProvider", object([("prepareProvider", JsonBool(true))]))])),
+                ("renameProvider", object([("prepareProvider", JsonBool(true))])),
+                ("completionProvider", object([("resolveProvider", JsonBool(false)), ("triggerCharacters", JsonArray([JsonString(".")]))]))])),
                 ("serverInfo", object([("name", JsonString("cangjie-lsp")), ("version", JsonString("0.1.0"))]))]))
             return
         }
@@ -305,6 +306,16 @@ class Server {
         if (method == "textDocument/didClose") {
             let path = filePath(string(field(params, "textDocument"), "uri")); let old = documents.Get(path)
             documents.Close(path); semantics.remove(path); publish(path, old.version, []); analyze(); return
+        }
+        if (method == "textDocument/completion") {
+            // Refresh real disk/configuration inputs; open buffer overlays remain authoritative.
+            analyze()
+            let path = filePath(string(field(params, "textDocument"), "uri"))
+            let snapshot = documents.Get(path)
+            let completion = CompletionRequest(sdk, semantics, compilationDatabase, path, position(field(params, "position")))
+            let result = completion.result()
+            if (documents.Get(path).version != snapshot.version) { throw IllegalArgumentException("Completion snapshot changed") }
+            response(id.getOrThrow(), result); return
         }
         if (method == "textDocument/prepareRename" || method == "textDocument/rename") {
             if (!versionedEdits) { throw IllegalArgumentException("Rename requires versioned documentChanges capability") }
