@@ -32,6 +32,20 @@ main(args: Array<String>): Int64 {
                 let index = source.indexOf("let result = ").getOrThrow() + "let result = ".size
                 let location = ProtocolPositionAt(source, index + (if (requested == "value") { 4 } else { 0 }))
                 let hover = document.Hover(location).getOrThrow()
+                let expectedLine: Int64 = if (requested == "shadow") { 10 } else if (requested == "parameter") { 6 } else { 2 }
+                let matches = Array<Int64>(1, repeat: 0)
+                for (binding in document.Bindings()) {
+                    if (!binding.isDeclaration && binding.location.path == path &&
+                        binding.location.start.line == location.line && binding.location.start.character == location.character) {
+                        let declaration = binding.declaration.getOrThrow()
+                        println("CANDIDATE_BINDING name=" + binding.name + " declLine=" + declaration.start.line.toString())
+                        if (declaration.path != path || declaration.start.line != expectedLine) {
+                            throw Exception("CANDIDATE_DECL_TARGET " + requested)
+                        }
+                        matches[0]++
+                    }
+                }
+                if (matches[0] != 1) { throw Exception("CANDIDATE_DECL_COUNT " + requested) }
                 let expected = if (requested == "shadow") { "shadow: Bool" } else if (requested == "parameter") { "parameter: Int64" } else { "value: Int64" }
                 println("CANDIDATE_TYPE actual=" + hover.text + " expected=" + expected)
                 if (hover.text != expected) { throw Exception("CANDIDATE_TYPE_TARGET " + requested) }
