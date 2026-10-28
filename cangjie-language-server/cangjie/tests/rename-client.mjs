@@ -114,6 +114,7 @@ if(mode==='project-alias'||mode==='project-unpacked')await client(mode,async c=>
  }
  const files=new Map([leaf,helper,app].map(p=>[p,fs.readFileSync(p,'utf8')]));fs.writeFileSync(directory+'/project-inputs.json',JSON.stringify(Object.fromEntries(files),null,2));
  await init(c,{initializationOptions:{compilationDatabase:db}});assert.deepEqual(await open(c,helper,files.get(helper)),[]);
+ const entry=await query(c,app,files.get(app),'main()','prepareRename');assert(entry.error,'MAIN_ENTRY_NOT_RENAMABLE');assert.equal(entry.result,undefined);
  const alias=await query(c,helper,files.get(helper),'importedAnswer()','prepareRename');assert(alias.error,'ALIAS_NOT_SOURCE_NAME_REJECT');assert.equal(alias.result,undefined);
  const r=await query(c,leaf,files.get(leaf),'func '+before,'rename',after,0);
  // Request the identifier rather than the func keyword.
