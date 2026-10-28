@@ -9,8 +9,7 @@ import std.collection.*
 import std.fs.*
 import std.process.*
 import std.regex.*
-
-foreign func Demangle(name: CString, len: Int64): CString
+import cjcj::mangle.Demangle
 
 var symbolMap = HashMap<String, (String, String)>()
 
@@ -36,16 +35,13 @@ func needMoreInformation() {
 }
 
 func getDemangle(name: String) {
-	unsafe {
-		var mangle = LibC.mallocCString(name)
-		var demangle = Demangle(mangle, name.size)
-		if (demangle.isNull()) {
-			return ""
-		}
-		var res = demangle.toString()
-		LibC.free(mangle)
-		LibC.free(demangle)
-		return res
+	try {
+		let demangle = Demangle(name)
+		let pkg = demangle.GetPkgName()
+		return pkg + (if (pkg.isEmpty()) { "" } else { "." }) + demangle.GetFullName()
+	} catch (e: Exception) {
+		// The original native API returned the input when parsing failed.
+		return name
 	}
 }
 

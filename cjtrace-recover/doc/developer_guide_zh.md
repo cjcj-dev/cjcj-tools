@@ -1,161 +1,59 @@
 # 异常堆栈信息还原工具开发指南
 
-## 开源项目介绍
+`cjtrace-recover` 从符号映射文件恢复异常堆栈中的函数名和源文件路径。命令行解析、映射文件读取、重复符号检查、堆栈恢复及 demangle 全部用仓颉执行。
 
-`cjtrace-recover` 是仓颉语言的异常堆栈信息还原工具。如果开发者在编译仓颉应用时开启了外形混淆，那么仓颉应用在运行时如果遇到问题，抛出的异常信息中的堆栈信息也是被混淆的状态，这导致开发者难以定位问题发生原因。`cjtrace-recover` 可以帮助开发者还原混淆过的异常堆栈信息，从而更好地定位和排查问题原因。具体来说，`cjtrace-recover` 可以还原异常堆栈信息中的以下两种信息：
+## 源码与依赖
 
-- 被混淆的函数名
-- 被混淆的路径名
+- `src/cjtrace-recover.cj`：正式命令入口及恢复算法。
+- 编译器仓库 `packages/mangle/src`：直接复用其 `CangjieDemangle.cj`、`Demangler.cj`、`DeCompression.cj` 和 `DemangleUtils.cj`。
+- `build/prepare-demangler.mjs`：在构建目录复制上述同源文件，从 `MangleUtils.cj` 提取常量和无 AST 依赖的字符串/字符辅助函数，从 `Compression.cj` 提取 `StringRef` 和 `IntRef` 两个引用容器。这里没有第二份 demangle 语法实现。
+- `CMakeLists.txt`：将上述源码编译为仓颉静态模块并链接工具，不构建或链接旧 C++ demangler。
 
-其整体技术架构如图所示：
+同源模块由编译器仓库维护。当前固定输入为 `cjcj-dev/cjcj@d0eea54f75d1bf3975a7721ea9907d2c897b8b4b`。专属构建向生成目录应用 `build/mangle-bare-D.diff`：拒绝孤立 `D`，保留合法 `Dh`，与工具固定原生基线一致。补丁获本轮主控明确授权，公共模块后续归并；不修改输入原件。更换同源输入时须重新核对这个显式补丁。
 
-![cjtrace-recover架构设计图](../figures/cjtrace_recover_architecture.png)
+构建输入应固定到具体编译器提交，保存来源坐标；工具仓库不维护该模块的长期副本。共享 `third_party/demangler` 仍服务其它原生消费者，cjtrace 构建不使用它。测试中的 `native-oracle.cpp` 只适配固定原生参考，用于差分比较，不是产品依赖，不安装或打包。
 
-## 目录
+## 构建、安装和归档
 
-`cjtrace-recover` 源码目录如下所示，其主要功能如注释中所描述。
+需要 Cangjie SDK、CMake 3.16.3+、Ninja、patch、Node.js 20+ 和 zx 8。构建机安装这些依赖；目标机器只需相应平台的系统库。
 
-```
-cjtrace-recover/src
-|-- cjtrace-recover.cj			# cjtrace-recover 命令行功能代码
-`-- native						# 调用的 C 接口的代码目录
-    `-- DemangleWrapper.cpp		# 调用 demangle 的桥接代码
-```
-
-## 安装和使用指导
-
-## 安装和使用指导
-
-### 构建准备
-
-`cjtrace-recover` 需要以下工具来构建：
-
-- `clang` 或者 `gcc` 编译器
-- `cmake` 3.16.3 及以上版本
-- `Ninja` 构建工具
-- `cangjie SDK`
-    - 开发者需要下载对应平台的 `cangjie SDK`：若想要编译本地平台产物，则需要的 `SDK` 为当前平台对应的版本；若想要从 `Linux` 平台交叉编译获取 `Windows` 平台的产物，则需要的 `SDK` 为 `Linux` 版本。
-    - 开发者需要执行对应 `cangjie SDK` 的 `envsetup` 脚本，确保 `SDK` 被正确配置。开发者也可以使用 `build.py` 的 `--cangjie-sdk` 指定要使用的 `cangjie SDK`。
-- 若使用 `build.py` 进行构建，请安装 `python3`
-- （可选）若使用 `Linux` 交叉编译 `Windows` 平台工具时，需要 `mingw` 工具链
-
-### 构建步骤
-
-开发者可以使用 `build` 目录下的构建脚本 `build.py` 进行 `cjtrace-recover` 构建。若想使用 `build.py` 构建，开发者可以配置 `cangjie SDK`，也可以使用自行编译的 `cangjie SDK`。若需要使用自行编译的 `cangjie SDK`，请参阅 [cangjie SDK 构建文档](https://gitcode.com/Cangjie/cangjie_build) 了解源码编译 `cangjie SDK` 的方法。
-
-构建流程如下：
-
-1. 通过 `cjtrace-recover/build` 目录下的构建脚本 `build.py` 编译 `cjtrace-recover`：
-
-    ```shell
-    cd ${WORKDIR}/cangjie-tools/cjtrace-recover/build
-    python3 build.py build -t release                                                                  (for Linux/Windows/macOS)
-    python3 build.py build -t release --target windows-x86_64 --target-sysroot <mingw toolchain path>  (for Linux-to-Windows)
-    ```
-
-    开发者需要通过 `-t, --build-type` 指定构建产物版本，该值会透传给 cmake 构建工程，可选值为 `debug/release/minsizerel/relwithdebinfo/minsizerelwithdebinfo`。
-
-    开发者可以使用 `--prefix` 命令声明构建安装路径，默认值为 `/usr/local`（继承自 cmake）。
-
-2. 验证 `cjtrace-recover` 是否安装成功：
-
-    ```shell
-    cjtrace-recover -h
-    ```
-
-    如果输出 `cjtrace-recover` 的帮助信息，则表示安装成功。
-
-> **注意：**
->
-> `Linux/macOS` 系统中，开发者可以将 `boundscheck` 动态库的路径配置到 `rpath` 中，以使编译出来的 `cjtrace-recover` 可以不通过系统动态库环境变量就能找到 `boundscheck` 动态库：
-> - 使用构建脚本 `build.py` 编译时，可以通过添加参数 `--set-rpath RPATH` 配置 `rpath` 的路径。
-> - `cangjie SDK` 中，`boundscheck` 动态库目录位于 `$CANGJIE_HOME/runtime/lib` 目录，基于运行平台划分成若干子目录，可以使用对应运行平台的库目录用于配置 `rpath`。
-
-### 更多构建选项
-
-`build.py` 的 `build` 功能提供如下额外选项：
-- `-t, --build-type BUILD_TYPE`: 指定构建产物版本，可选值为 `debug/release/minsizerel/relwithdebinfo/minsizerelwithdebinfo`；
-- `--target TARGET`: 指定编译目标产物的运行平台，默认值为空，即本地平台，当前仅支持 `linux` 平台上通过 `--target windows-x86_64` 交叉编译 `windows-x86_64` 平台的产物；
-- `--set-rpath RPATH`: 指定 `rpath` 路径；
-- `--target-sysroot PATH`: 指定交叉编译的工具链路径，若使用 `Linux` 交叉编译 `Windows` 平台工具时必选。
-- `--prefix`: 将构建产物安装到指定路径。`build` 功能和 `install` 功能中的 `--prefix` 选项用途一致，开发者任选其一即可声明构建安装路径。
-- `--cangjie-sdk`：指定使用的 `cangjie SDK`。开发者若已经使用了 `cangjie SDK` 的 `envsetup` 脚本，则可以不使用该选项。
-- `-h, --help`: 打印 `build` 功能的帮助信息。
-
-此外，`build.py` 还提供如下额外功能：
-
-- `install [--prefix PREFIX]`: 将构建产物安装到指定路径，不指定路径时默认值为 `/usr/local` 目录；`install` 前需要先正确执行 `build`；
-- `clean`: 清除默认路径的构建产物；
-- `-h, --help`: 打印 `build.py` 的帮助信息。
-
-## API 和配置说明
-
-`cjcov` 提供以下主要命令，用于项目构建和配置管理。
-
-### 命令介绍
-
-通过 `cjtrace-recover -h` 即可查看命令使用方法：
-
-```text
-cjtrace-recover -h
-Usage: cjtrace-recover OPTION
-
-Use symbol mapping files to recover obfuscated exception stacktrace. The supported options are:
-    -f <file>       path to the obfuscated exception stacktrace file
-    -m <file,...>   path to the symbol mapping files
-    -h              display this help and exit
-    -v              print version of cjtrace-recover
+```console
+zx build/build.mjs build -t release --cangjie-sdk /path/to/sdk \
+  --mangle-source /path/to/compiler/packages/mangle/src \
+  --build-dir /path/to/build --prefix /path/to/install
+zx build/build.mjs install --build-dir /path/to/build --prefix /path/to/install
+/path/to/install/bin/cjtrace-recover -m symbols.map -f trace.txt
+tar -czf cjtrace-recover.tar.gz -C /path/to/install .
 ```
 
-开发者可以通过 `-f` 选项指定异常堆栈信息保存的文件，通过 `-m` 选项指定符号映射文件，`cjtrace-recover` 会根据符号映射文件中的映射关系还原异常堆栈信息中的符号名和路径名，并将还原后的异常堆栈信息通过标准输出（`stdout`）输出。
+`CANGJIE_HOME` 和 `CANGJIE_MANGLE_SOURCE_DIR` 也可提供默认输入。已有 `build/build.py` 入口保留兼容，使用同一个 CMake 构建图，新增同源依赖通过上述环境变量传入。公共 SDK/CI 调用方应传固定编译器输入，具体组合由其所有者接线。
 
-### 使用样例
+可直接使用 CMake：
 
-假设有经过外形混淆的仓颉程序抛出的异常堆栈信息如下：
-
-```text
-An exception has occurred:
-MyException: this is myexception
-     at a0(SOURCE:0)
-     at ah(SOURCE:0)
-     at c3(SOURCE:0)
-     at cm0(SOURCE:0)
-     at cm1(SOURCE:0)
-     at ci0(:0)
+```console
+cmake -S . -B /path/to/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCANGJIE_HOME=/path/to/sdk \
+  -DCANGJIE_MANGLE_SOURCE_DIR=/path/to/compiler/packages/mangle/src
+cmake --build /path/to/build
+cmake --install /path/to/build --prefix /path/to/install
 ```
 
-并且在混淆编译时输出的符号映射文件 `test.obf.map` 的内容如下：
+安装目录包含 `bin/cjtrace-recover`、`lib` 中的目标 SDK runtime/标准库依赖以及许可证。Windows runtime DLL 安装在 `bin`。不安装构建静态模块、旧 C++ 工具或旧 demangler 库。Linux 默认 rpath 为 `$ORIGIN/../lib`，macOS 为 `@loader_path/../lib`；可用 `--set-rpath` 或 CMake `RUNTIME_RPATH` 覆盖。SDK 内部统一提供依赖时可设 `-DCJTRACE_BUNDLE_RUNTIME=OFF`。
 
-```text
-_ZN10mymod.mod111MyException6<init>ER_ZN8std.core6StringE a0 mymod/mod1/mod1.cj
-_ZN10mymod.mod115my_common_func1Ev ah mymod/mod1/mod1.cj
-_ZN10mymod.mod18MyClassA7myfunc1Eld c3 mymod/mod1/mod1.cj
-_ZN7default6<main>Ev cm0 test1/test.cj
-user.main cm1
-cj_entry$ ci0
-```
+构建类型支持 `debug`、`release`、`minsizerel`、`relwithdebinfo`、`minsizerelwithdebinfo`。`build` 不隐式执行安装；`install --prefix` 可以覆盖配置时的安装目录。重复 `build` 复用实际依赖图，源码或 CJO 缺失会重新生成。`clean` 调用原生构建器清理产物。
 
-开发者需要将异常堆栈信息保存在文件中，假设为 `test_stacktrace`。然后通过以下指令还原异常堆栈信息：
+Windows 交叉构建保留 `--target windows-x86_64 --target-sysroot /path/to/mingw`；必须提供目标 SDK 库。Linux 宿主运行测试不授予 Windows、macOS、OHOS 或重编目标 runtime 后的 SDK 资格。
 
-```shell
-cjtrace-recover -f test_stacktrace -m test.obf.map
-```
+## 功能和测试
 
-运行该指令后，会得到如下输出：
+正式用法见 `cjtrace-recover -h` 和用户指南。映射行含“原符号 混淆符号 [路径]”，支持多个逗号分隔的映射文件。重复映射可补全缺失路径；原符号冲突或两个非空路径冲突返回 1。未映射帧及非帧文本保留，指定 runtime 帧过滤；`SOURCE` 路径和零行号按原规则恢复。非法 mangled name 保留原符号，不让解析异常终止整份堆栈恢复。CLI、文件读取及映射格式错误保留非零退出。
 
-```text
-An exception has occurred:
-MyException: this is myexception
-     at mymod.mod1.MyException::init(std.core::String)(mymod/mod1/mod1.cj)
-     at mymod.mod1.my_common_func1()(mymod/mod1/mod1.cj)
-     at mymod.mod1.MyClassA::myfunc1(Int64, Float64)(mymod/mod1/mod1.cj)
-     at default.main()(/home/zzx/repos/obf_test/test1/test.cj)
-```
+专属测试：
 
-`cjtrace-recover` 会根据符号映射文件还原异常堆栈信息，并通过标准输出流（`stdout`）输出。
+- `tests/public/concurrent-symbols.mjs`：真实 cjc 编译/运行/nm 产生压缩并发符号和普通控制，再消费公开恢复入口。
+- `tests/public/compiler-reference.mjs`：实际对象未定义引用与已链接定义同名，验证两端及文件行消费者。
+- `tests/public/recovery-contract.mjs`：CLI、错误退出、重复映射、CRLF、Windows 路径、过滤、文件行及完整语法分支矩阵；可传旧工具做有限差分。
+- `tests/public/symbol-corpus.mjs`：真实 cjc ELF 的全部适用符号，经公开 map/trace 入口，与固定原生语法参考逐符号比较。
+- `tests/public/demangler-probe.cj`：直接测试产品所用同一模块的类型 API，用既有 primitive-types 测试验证裸 D 拒绝及 Dh/i 独立控制。此装置不安装。
 
-## 相关仓
-
-- [cangjie 仓](https://gitcode.com/Cangjie/cangjie_compiler)
-- [stdx 仓](https://gitcode.com/Cangjie/cangjie_stdx)
-- [cangjie SDK](https://gitcode.com/Cangjie/cangjie_build)
+构建、测试和安装的实际资格以当前固定输入的执行记录为准，不能以帮助输出或单个函数样例代替完整验收。

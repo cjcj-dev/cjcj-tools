@@ -1,0 +1,11 @@
+[package]
+name = "cjfmt"
+version = "1.3.0"
+cjc-version = "1.1.0"
+output-type = "executable"
+src-dir = "src"
+compile-option = @COMPILE@
+link-option = @LINK@
+
+[target.@TARGET@.bin-dependencies.package-option]
+@PACKAGES@

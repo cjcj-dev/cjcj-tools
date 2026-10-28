@@ -1,0 +1,2220 @@
+{
+  "base": "271b2f4c20be309205eca5e58bb09ffa24727a64",
+  "registrations": [
+    {
+      "implementation": "DataflowRuleGCHK01Check",
+      "id": "G.CHK.01",
+      "stage": "CHIR",
+      "registration": "cjlint/src/checker/Checker.cpp:101",
+      "sources": [
+        "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_CHK_01/DataflowRuleGCHK01Check.cpp"
+      ]
+    },
+    {
+      "implementation": "DataflowRuleGFIO01Check",
+      "id": "G.FIO.01",
+      "stage": "CHIR",
+      "registration": "cjlint/src/checker/Checker.cpp:102",
+      "sources": [
+        "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_FIO_01/DataflowRuleGFIO01Check.cpp"
+      ]
+    },
+    {
+      "implementation": "DataflowRuleGOTH01Check",
+      "id": "G.OTH.01",
+      "stage": "CHIR",
+      "registration": "cjlint/src/checker/Checker.cpp:103",
+      "sources": [
+        "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_OTH_01/DataflowRuleGOTH01Check.cpp"
+      ]
+    },
+    {
+      "implementation": "DataflowRuleGSER03Checker",
+      "id": "G.SER.03",
+      "stage": "CHIR",
+      "registration": "cjlint/src/checker/Checker.cpp:104",
+      "sources": [
+        "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_SER_03/DataflowRuleGSER03Checker.cpp"
+      ]
+    },
+    {
+      "implementation": "DataflowRuleP02Check",
+      "id": "P.02",
+      "stage": "CHIR",
+      "registration": "cjlint/src/checker/Checker.cpp:105",
+      "sources": [
+        "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_P_02/DataflowRuleP02Check.cpp"
+      ]
+    },
+    {
+      "implementation": "DataflowRuleVAR01Check",
+      "id": "G.VAR.01",
+      "stage": "CHIR",
+      "registration": "cjlint/src/checker/Checker.cpp:106",
+      "sources": [
+        "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_VAR_01/DataflowRuleVAR01Check.cpp"
+      ]
+    },
+    {
+      "implementation": "DataflowRuleGCHK03Check",
+      "id": "G.CHK.03",
+      "stage": "CHIR",
+      "registration": "cjlint/src/checker/Checker.cpp:107",
+      "sources": [
+        "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_CHK_03/DataflowRuleGCHK03Check.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGENU01",
+      "id": "G.ENU.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:108",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGENU01/StructuralRuleGENU01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGEXP01",
+      "id": "G.EXP.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:109",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP01/StructuralRuleGEXP01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGEXP02",
+      "id": "G.EXP.02",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:110",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP02/StructuralRuleGEXP02.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGENU02",
+      "id": "G.ENU.02",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:111",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGENU02/StructuralRuleGENU02.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGEXP03",
+      "id": "G.EXP.03",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:112",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP03/StructuralRuleGEXP03.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGDCL01",
+      "id": "G.DCL.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:113",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGDCL01/StructuralRuleGDCL01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGDCL02",
+      "id": "G.DCL.02",
+      "stage": "PARSE",
+      "registration": "cjlint/src/checker/Checker.cpp:114",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGDCL02/StructuralRuleGDCL02.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGEXP04",
+      "id": "G.EXP.04",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:115",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP04/StructuralRuleGEXP04.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGFMT01",
+      "id": "G.FMT.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:116",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFMT01/StructuralRuleGFMT01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGFMT13",
+      "id": "G.FMT.13",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:117",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFMT13/StructuralRuleGFMT13.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGFMT15",
+      "id": "G.FMT.15",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:118",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFMT15/StructuralRuleGFMT15.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGOTH02",
+      "id": "G.OTH.02",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:119",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOTH02/StructuralRuleGOTH02.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGOTH03",
+      "id": "G.OTH.03",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:120",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOTH03/StructuralRuleGOTH03.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGOTH04",
+      "id": "G.OTH.04",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:121",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOTH04/StructuralRuleGOTH04.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGCON01",
+      "id": "G.CON.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:122",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCON01/StructuralRuleGCON01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGCON03",
+      "id": "G.CON.03",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:123",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCON03/StructuralRuleGCON03.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGFUN01",
+      "id": "G.FUN.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:124",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFUN01/StructuralRuleGFUN01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGFUN02",
+      "id": "G.FUN.02",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:125",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFUN02/StructuralRuleGFUN02.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGFUNC03",
+      "id": "G.FUN.03",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:126",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFUNC03/StructuralRuleGFUNC03.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGNAM01",
+      "id": "G.NAM.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:127",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM01/StructuralRuleGNAM01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGNAM02",
+      "id": "G.NAM.02",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:128",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM02/StructuralRuleGNAM02.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGNAM03",
+      "id": "G.NAM.03",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:129",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM03/StructuralRuleGNAM03.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGNAM04",
+      "id": "G.NAM.04",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:130",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM04/StructuralRuleGNAM04.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGNAM05",
+      "id": "G.NAM.05",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:131",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM05/StructuralRuleGNAM05.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGNAM06",
+      "id": "G.NAM.06",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:132",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM06/StructuralRuleGNAM06.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGSEC01",
+      "id": "G.SEC.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:133",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSEC01/StructuralRuleGSEC01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGSER01",
+      "id": "G.SER.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:134",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSER01/StructuralRuleGSER01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGSER02",
+      "id": "G.SER.02",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:135",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSER02/StructuralRuleGSER02.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGCHK02",
+      "id": "G.CHK.02",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:136",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCHK02/StructuralRuleGCHK02.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGCHK04",
+      "id": "G.CHK.04",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:137",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCHK04/StructuralRuleGCHK04.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGERR01",
+      "id": "G.ERR.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:138",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGERR01/StructuralRuleGERR01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGERR02",
+      "id": "G.ERR.02",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:139",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGERR02/StructuralRuleGERR02.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGERR04",
+      "id": "G.ERR.04",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:140",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGERR04/StructuralRuleGERR04.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGCON02",
+      "id": "G.CON.02",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:141",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCON02/StructuralRuleGCON02.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleP01",
+      "id": "P.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:142",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleP01/StructuralRuleP01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleP03",
+      "id": "P.03",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:143",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleP03/StructuralRuleP03.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGVAR02",
+      "id": "G.VAR.02",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:144",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGVAR02/StructuralRuleGVAR02.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGVAR03",
+      "id": "G.VAR.03",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:145",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGVAR03/StructuralRuleGVAR03.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGPKG01",
+      "id": "G.PKG.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:146",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGPKG01/StructuralRuleGPKG01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGERR03",
+      "id": "G.ERR.03",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:147",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGERR03/StructuralRuleGERR03.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGEXP05",
+      "id": "G.EXP.05",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:148",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP05/StructuralRuleGEXP05.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGEXP06",
+      "id": "G.EXP.06",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:149",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP06/StructuralRuleGEXP06.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGEXP07",
+      "id": "G.EXP.07",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:150",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP07/StructuralRuleGEXP07.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGOPR01",
+      "id": "G.OPR.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:151",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOPR01/StructuralRuleGOPR01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGOPR02",
+      "id": "G.OPR.02",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:152",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOPR02/StructuralRuleGOPR02.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGITF01",
+      "id": "G.ITF.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:153",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGITF01/StructuralRuleGITF01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGITF02",
+      "id": "G.ITF.02",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:154",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGITF02/StructuralRuleGITF02.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGCLS01",
+      "id": "G.CLS.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:155",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCLS01/StructuralRuleGCLS01.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGITF03",
+      "id": "G.ITF.03",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:156",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGITF03/StructuralRuleGITF03.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGITF04",
+      "id": "G.ITF.04",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:157",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGITF04/StructuralRuleGITF04.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGSYN01",
+      "id": "G.SYN.01",
+      "stage": "PARSE",
+      "registration": "cjlint/src/checker/Checker.cpp:158",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSYN01/StructuralRuleGSYN01.cpp",
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSYN01/StructuralRuleGSYN0101.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGSYN0101",
+      "id": "G.SYN.01",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:159",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSYN01/StructuralRuleGSYN0101.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleGTYP03",
+      "id": "G.TYP.03",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:160",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleGTYP03/StructuralRuleGTYP03.cpp"
+      ]
+    },
+    {
+      "implementation": "StructuralRuleFFIC7",
+      "id": "FFI.C.7",
+      "stage": "SEMA",
+      "registration": "cjlint/src/checker/Checker.cpp:161",
+      "sources": [
+        "cjlint/src/rules/structural_rule_analysis/StructuralRuleFFIC7/StructuralRuleFFIC7.cpp"
+      ]
+    }
+  ],
+  "uniqueRuleCount": 60,
+  "defaultRules": [
+    "G.CHK.04",
+    "G.OTH.02",
+    "G.OTH.03",
+    "G.ENU.01",
+    "G.EXP.01",
+    "G.EXP.02",
+    "G.ENU.02",
+    "G.EXP.03",
+    "G.EXP.04",
+    "G.FMT.01",
+    "G.FMT.15",
+    "G.SEC.01",
+    "G.FUN.01",
+    "G.FUN.02",
+    "G.FUN.03",
+    "G.CON.01",
+    "G.SER.01",
+    "G.SER.02",
+    "G.NAM.01",
+    "G.NAM.02",
+    "G.NAM.03",
+    "G.NAM.04",
+    "G.NAM.05",
+    "G.DCL.01",
+    "G.DCL.02",
+    "G.CON.03",
+    "P.01",
+    "G.CHK.02",
+    "G.CHK.03",
+    "G.CON.02",
+    "G.ERR.01",
+    "G.ERR.02",
+    "G.ERR.04",
+    "P.02",
+    "P.03",
+    "G.SER.03",
+    "G.OTH.01",
+    "G.OTH.04",
+    "G.CHK.01",
+    "G.FIO.01",
+    "G.PKG.01",
+    "G.ERR.03",
+    "G.EXP.05",
+    "G.EXP.06",
+    "G.EXP.07",
+    "G.CLS.01",
+    "G.OPR.01",
+    "G.OPR.02",
+    "G.ITF.01",
+    "G.ITF.02",
+    "G.ITF.03",
+    "G.ITF.04",
+    "G.VAR.01",
+    "G.VAR.02",
+    "G.TYP.03",
+    "FFI.C.7"
+  ],
+  "diagnostics": [
+    {
+      "level": "MANDATORY",
+      "name": "G_CHK_01_illegal_func_arg",
+      "message": "G.CHK.01: In function '%s', %s"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CHK_01_illegal_return",
+      "message": "G.CHK.01: The return value is untrusted, we can't deliver it outter."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CHK_02_external_data_record_logs",
+      "message": "G.CHK.02: '%s' is external data, it should not be used to record logs"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CLS_01_override_super_func",
+      "message": "G.CLS.01: Subclass function '%s' in class '%s' have more privileges than their super class"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CON_01_synchronized_object_modifier_information_0",
+      "message": "G.CON.01: '%s' should not be used as modifier of synchronized object"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CON_01_synchronized_object_modifier_information_1",
+      "message": "G.CON.01: '%s' should be used as modifier of synchronized object"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CON_01_synchronized_object_modifier_information_2",
+      "message": "G.CON.01: '%s' should not be defined at top-level"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CON_03_override_func_thread_safe",
+      "message": "G.CON.03: Override function '%s' should not use non-thread safe way to override a thread-safe function"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_ENU_01_0_duplicate_name_information",
+      "message": "G.ENU.01: '%s' redeclared as different kind of symbol"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_ENU_01_1_duplicate_name_information",
+      "message": "G.ENU.01: Enum sugar access '%s' conflict with type name, try to change it"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_EXP_03_side_effect_information",
+      "message": "G.EXP.03: Right operand '%s' include side effect"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_FIO_01",
+      "message": "G.FIO.01: '%s' may be a temporary file, please make sure temporary file will eventually be deleted before return statement: Line: %d, Colum: %d"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_FIO_01_compile_add_return",
+      "message": "G.FIO.01: '%s' may be a temporary file, please make sure temporary file will eventually be deleted before return statement"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_FMT_01_encoding_UTF_8_information",
+      "message": "G.FMT.01: The source file encoding format (including comments) must be UTF-8"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_OTH_01_log_sensitive_information",
+      "message": "G.OTH.01: Sensitive information (keyword '%s') should not be recorded to logs."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_OTH_02_hardcode_sensitive_information",
+      "message": "G.OTH.02: %s is sensitive information is hard-coded in the program"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_OTH_02_hardcode_sensitivename_information",
+      "message": "G.OTH.02: SenInfoName found!%s is sensitive information is hard-coded in the program"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_OTH_02_hardcode_weakpasscode_information",
+      "message": "G.OTH.02: WeakPasscode found!%s is sensitive information is hard-coded in the program"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_OTH_03_public_email_hardcode_information",
+      "message": "G.OTH.03: %s is public email, hard-coded in the program"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_OTH_03_public_ip_hardcode_information",
+      "message": "G.OTH.03: %s is public ip, hard-coded in the program"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_OTH_03_public_url_hardcode_information",
+      "message": "G.OTH.03: %s is public url, hard-coded in the program"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_SEC_01_open_check_function_information",
+      "message": "G.SEC.01: Checking function '%s' is declared as open in an open class, it can be overridden"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_SER_01_serialize_sensitive_field",
+      "message": "G.SER.01: Serialize sensitive field '%s' may cause information leak"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_SER_01_serialize_sensitive_data",
+      "message": "G.SER.01: Serialize unencrypted sensitive data '%s' may cause information leak"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_SER_02_Deserialization_Bypass",
+      "message": "G.SER.02: Assign variable '%s' in deserialization function without checking"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_SER_03_key_lack",
+      "message": "G.SER.03: Type mismatch: the deserialize type of '%s' is %s, but in function 'serialize()', '%s' is not serialized."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_SER_03_return_error",
+      "message": "G.SER.03: Type mismatch: the deserialize type of '%s' is %s, but in function 'serialize()', return type is %s, not 'DataModelStruct'."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_SER_03_type_error",
+      "message": "G.SER.03: Type mismatch: the deserialized type of '%s' is %s, but in function 'serialize()', the type is %s."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_SER_03_type_lack",
+      "message": "G.SER.03: Type mismatch: type '%s' is deserialized in line %d, but in function 'serialize()', return type is %s."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "P_01_dead_lock",
+      "message": "P.01: The nested synchronized objects has a different sequence than the nested synchronized objects on the line %d of the file '%s', which may cause a deadlock."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_ERR_02_sensitive_exception",
+      "message": "G.ERR.02: The '%s' is a sensitive exception type."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_ERR_02_sensitive_info",
+      "message": "G.ERR.02: The thrown exception contains sensitive information '%s'."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_ERR_04_avoid_return_finally",
+      "message": "G.ERR.04: Avoid using 'return' to cause a finally block to terminate abnormally."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_ERR_04_avoid_break_finally",
+      "message": "G.ERR.04: Avoid using 'break' to cause a finally block to terminate abnormally."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_ERR_04_avoid_continue_finally",
+      "message": "G.ERR.04: Avoid using 'continue' to cause a finally block to terminate abnormally."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_ERR_04_avoid_throw_finally",
+      "message": "G.ERR.04: Avoid throwing exceptions to cause a finally block to terminate abnormally."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CHK_04_untrusted_regular_expressions_redundantGroup",
+      "message": "G.CHK.04: '%s' has redundant grouping, regular expressions should minimize the use of groupings."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CHK_04_untrusted_regular_expressions_itselfRepeated",
+      "message": "G.CHK.04: Regular expression: '%s' is susceptible to ReDos attacks, any regular expression containing a grouping expression with repetition that is itself repeated is going to be vulnerable."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CHK_04_untrusted_regular_expressions_subexpressionsOverlap",
+      "message": "G.CHK.04: Regular expression: '%s' is susceptible to ReDos attacks, any group containing alternation where the alternate subexpressions overlap one another is vulnerable."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CHK_04_untrusted_regular_expressions_external_data",
+      "message": "G.CHK.04: '%s' is or includes external data, it should not be used to regular expressions directly."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CON_02_lock",
+      "message": "G.CON.02: Use %s.lock() outside try block or release '%s' at finally block."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_FUN_02_unused_param_information",
+      "message": "G.FUN.02: Parameter '%s' is unused parameter"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "P_02_diff_mutex",
+      "message": "P.02: %sthe same variable is protected by different mutex"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "P_02_no_mutex",
+      "message": "P.02: '%s' is used in line %s but not be protected by mutex"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "P_03_func_could_be_overridden",
+      "message": "P.03: '%s' could be inherited and func '%s' could be overridden, Defensive copy required for security checks"
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_SYN_01_disable_syntax_information_01",
+      "message": "G.SYN.01: The syntax '%s' is disabled in this project."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_SYN_01_disable_syntax_information_02",
+      "message": "G.SYN.01: The primitive type '%s' is disabled in this project."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_SYN_01_disable_syntax_information_03",
+      "message": "G.SYN.01: The container type '%s' is disabled in this project."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_TYP_03_use_isNaN_method_float",
+      "message": "G.TYP.03: The isNaN() method must be used to determine whether a Float type variable is NaN."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_DCL_02_public_variable_type",
+      "message": "G.DCL.02: The type of the public variable '%s' needs to be explicitly declared."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_DCL_02_public_function_type",
+      "message": "G.DCL.02: The return type of the public function '%s' needs to be explicitly declared."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CHK_03_without_canonicalize",
+      "message": "G.CHK.03: The file path '%s' that may be constructed from external data must be canonicalized before validation."
+    },
+    {
+      "level": "MANDATORY",
+      "name": "G_CHK_03_without_verify",
+      "message": "G.CHK.03: The file path '%s' that may be constructed from external data must be verified before use."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_EXP_02_not_accurate_float_operation_01",
+      "message": "G.EXP.02: '%s' cannot be accurately represented in the current floating point number type."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_EXP_02_not_accurate_float_operation_02",
+      "message": "G.EXP.02: Floating-point numbers typically come with errors when representing real numbers, so it is recommended to avoid using '%s' for direct comparison."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_NAM_01_Package_Information",
+      "message": "G.NAM.01: The name of the '%s' package must contain only digits, lowercase letters, and underscores (_)."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_NAM_01_Package_name_should_match_path",
+      "message": "G.NAM.01: The name of the '%s' package must correspond to the directory where the source code resides."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_NAM_02_filename_lower_information",
+      "message": "G.NAM.02: Filename '%s' is recommended to use digits, lowercase letters and underscores(_)"
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_NAM_02_filename_standard_information",
+      "message": "G.NAM.02: Filename '%s' does not match the unique externally visible top-level element identifier '%s'"
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_NAM_03_exception_naming_information",
+      "message": "G.NAM.03: Exception class '%s' recommend to advised to add the Exception/Error"
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_NAM_03_identifier_naming_information",
+      "message": "G.NAM.03: Identifier '%s' recommend to use upper camel case for interface, class, struct, enumeration type, enumeration member construction, type alias"
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_NAM_04_function_naming_information",
+      "message": "G.NAM.04: Function name '%s' recommend to use lower camel case"
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_NAM_05_immutable_global_variable_naming_information",
+      "message": "G.NAM.05: Immutable global or static variable name '%s' recommend to use all capital letters"
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_NAM_06_generic_type_parameters",
+      "message": "G.NAM.06: Generic parameter '%s' is not recommended to use lowercase characters"
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_NAM_06_var_camelCase_name",
+      "message": "G.NAM.06: Variable '%s' is recommended to use camelCase naming"
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_NAM_06_propertie_camelCase_name",
+      "message": "G.NAM.06: Properties '%s' is recommended to use camelCase naming"
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_NAM_06_parameter_camelCase_name",
+      "message": "G.NAM.06: Parameter '%s' is recommended to use camelCase naming"
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_DCL_01_avoid_shadow",
+      "message": "G.DCL.01: '%s' on line %d is shadowed by the '%s' on line %d, please avoid shadowing."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_CHK_04_untrusted_regular_expressions_dynamical_regex",
+      "message": "G.CHK.04: '%s' is or includes function parameter, regular expressions should not be built dynamically."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_VAR_03_global_variable_declaration_information",
+      "message": "G.VAR.03: Avoid declaring global variable '%s'."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_PKG_01_avoid_wildcard",
+      "message": "G.PKG.01: Avoid using the wildcard '*' in the import declaration '%s'."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_ERR_01_exceptions_process_01",
+      "message": "G.ERR.01: Exceptions should not be discarded without any processing."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_ERR_01_exceptions_process_02",
+      "message": "G.ERR.01: The exception types that may be thrown should be described in the API comments."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_ERR_03_avoid_option_getorthrow",
+      "message": "G.ERR.03: Avoid using the getOrThrow() function of the Option type."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_EXP_06_avoid_redundant_op_in_bool_type_comparisons",
+      "message": "G.EXP.06: Avoid redundant operator '==' or '!=' in boolean type comparisons."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_OPR_02_enum_parentheses_overload_information",
+      "message": "G.OPR.02: Avoid defining '%s' operator overloading functions in enumeration types."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_ITF_02_prefer_implement_interfaces_at_type_definition",
+      "message": "G.ITF.02: Prefer implementing interfaces at the type definition level rather than through extension."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_EXP_04_side_effect_depend_on_order",
+      "message": "G.EXP.04: Avoiding side effects in '%s' depends on the order of evaluation of expressions."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_EXP_07_constants_on_the_right",
+      "message": "G.EXP.07: '%s' is constant, please put it on the right of comparison operators."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_CLS_01_increase_the_accessibility_of_the_function_01",
+      "message": "G.CLS.01: Please don't increase the accessibility of the function when override the parent class's function."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_CLS_01_increase_the_accessibility_of_the_function_02",
+      "message": "G.CLS.01: This function increases the accessibility of other functions."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_ITF_01_should_use_mut_modifier",
+      "message": "G.ITF.01: '%s' should use mut modifier to support struct type to implement or extend this interface."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_ITF_03_avoid_declaring_both_parent_interface_and_sub_interface",
+      "message": "G.ITF.03: '%s' is the sub-interface of '%s', please avoid declaring both parent-interface and sub-interface."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_ITF_04_avoid_directly_using_interfaces_as_types_01",
+      "message": "G.ITF.04: The type of parameter '%s' is interface, please avoid directly using interface as type parameter, and Try to constrain the generic type by interface as type parameter."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_ITF_04_avoid_directly_using_interfaces_as_types_02",
+      "message": "G.ITF.04: The return type of function '%s' is interface, please avoid directly using interface as return type, and Try to constrain the generic type by interface as return type."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_EXP_01_avoid_mixed_patterns_in_match_expr_01",
+      "message": "G.EXP.01: The case of irrefutable pattern is recommended to be placed after all the cases of refutable pattern."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_EXP_01_avoid_mixed_patterns_in_match_expr_02",
+      "message": "G.EXP.01: Avoid mixing patterns with different matching dimensions within the same level of a match expression."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_ENU_02_enum_constructor_overload_information",
+      "message": "G.ENU.02: The enum constructor or function '%s' is overloaded."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_FUN_01_function_single_responsibility_information_0",
+      "message": "G.FUN.01: The function '%s' is recommended to have no more than 5 parameters."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_FUN_01_function_single_responsibility_information_1",
+      "message": "G.FUN.01: The function '%s' is recommended to have no more than 50 lines of code."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_FUN_01_function_single_responsibility_information_2",
+      "message": "G.FUN.01: The maximum depth of nested code blocks in a function is recommended to be no more than 4 levels."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_FUN_01_function_single_responsibility_information_3",
+      "message": "G.FUN.01: The lambda expression is recommended to have no more than 5 parameters."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_FUN_01_function_single_responsibility_information_4",
+      "message": "G.FUN.01: The lambda expression is recommended to have no more than 50 lines of code."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_FUN_01_function_single_responsibility_information_5",
+      "message": "G.FUN.01: The maximum depth of nested code blocks in a lambda expression is recommended to be no more than 4 levels."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_FUN_03_overload_in_different_scopes",
+      "message": "G.FUN.03: Avoid overloaded functions '%s' appearing in different scopes."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_FUN_03_params_in_overload_funcs",
+      "message": "G.FUN.03: Avoid having the same set of arguments pass type checks for multiple functions '%s' among overloaded functions."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_OPR_01_avoid_operator_overloading_that_violates_conventions_01",
+      "message": "G.OPR.01: Avoid overloading the operator '%s' that is already supported by built-in types."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_OPR_01_avoid_operator_overloading_that_violates_conventions_02",
+      "message": "G.OPR.01: Avoid overloading the operator '%s' that violates usage habits."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_OTH_04_avoid_use_string_type_to_store_sensitive_data",
+      "message": "G.OTH.04: Avoid using 'String' to store sensitive data. Sensitive data should be cleared immediately after being used."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_EXP_05_use_parentheses_to_express_operations_order_01",
+      "message": "G.EXP.05: The unary operator '%s' does not need to be enclosed in parentheses."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_EXP_05_use_parentheses_to_express_operations_order_02",
+      "message": "G.EXP.05: The operators are the same and do not require parentheses here."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_EXP_05_use_parentheses_to_express_operations_order_03",
+      "message": "G.EXP.05: Here parentheses are not needed to indicate priority."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_EXP_05_use_parentheses_to_express_operations_order_04",
+      "message": "G.EXP.05: Suggest to use parentheses to explicitly indicate the order of operations in an expression."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_VAR_01_prefer_immutable_var",
+      "message": "G.VAR.01: Prefer immutable variables when the value of the variable '%s' does not change."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_VAR_01_prefer_immutable_prop",
+      "message": "G.VAR.01: Prefer not to declare it as mutable and avoid defining a setter function for an unchanging property '%s'."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_VAR_01_prefer_immutable_member",
+      "message": "G.VAR.01: Prefer immutable variables when the value of the member variable '%s' does not change."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_FMT_13_header_comments_copyright_01",
+      "message": "G.FMT.13: The file header comments should contain the copyright information."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_FMT_13_header_comments_copyright_02",
+      "message": "G.FMT.13: The copyright information should use block comments."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_VAR_02_min_scope",
+      "message": "G.VAR.02: Prefer variable '%s' to follow the principle of minimizing scope."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "G_FMT_15_leading_zero_before_decimal",
+      "message": "G.FMT.15: Leading zeros before a decimal should not be omitted in '%s'."
+    },
+    {
+      "level": "SUGGESTIONS",
+      "name": "FFI_C_7_avoid_truncation_error",
+      "message": "FFI.C.7: Avoid truncation errors when performing forced pointer type conversions."
+    }
+  ],
+  "configs": {
+    "cjlint/config/cjlint_rule_list.json": {
+      "RuleList": [
+        "G.CHK.04",
+        "G.OTH.02",
+        "G.OTH.03",
+        "G.ENU.01",
+        "G.EXP.01",
+        "G.EXP.02",
+        "G.ENU.02",
+        "G.EXP.03",
+        "G.EXP.04",
+        "G.FMT.01",
+        "G.FMT.15",
+        "G.SEC.01",
+        "G.FUN.01",
+        "G.FUN.02",
+        "G.FUN.03",
+        "G.CON.01",
+        "G.SER.01",
+        "G.SER.02",
+        "G.NAM.01",
+        "G.NAM.02",
+        "G.NAM.03",
+        "G.NAM.04",
+        "G.NAM.05",
+        "G.DCL.01",
+        "G.DCL.02",
+        "G.CON.03",
+        "P.01",
+        "G.CHK.02",
+        "G.CHK.03",
+        "G.CON.02",
+        "G.ERR.01",
+        "G.ERR.02",
+        "G.ERR.04",
+        "P.02",
+        "P.03",
+        "G.SER.03",
+        "G.OTH.01",
+        "G.OTH.04",
+        "G.CHK.01",
+        "G.FIO.01",
+        "G.PKG.01",
+        "G.ERR.03",
+        "G.EXP.05",
+        "G.EXP.06",
+        "G.EXP.07",
+        "G.CLS.01",
+        "G.OPR.01",
+        "G.OPR.02",
+        "G.ITF.01",
+        "G.ITF.02",
+        "G.ITF.03",
+        "G.ITF.04",
+        "G.VAR.01",
+        "G.VAR.02",
+        "G.TYP.03",
+        "FFI.C.7"
+      ]
+    },
+    "cjlint/config/dataflow_rule_G_CHK_03.json": {
+      "ExternalDateFunc": [
+        {
+          "name": "getos",
+          "parent": "",
+          "lib": "std.posix"
+        },
+        {
+          "name": "gethostname",
+          "parent": "",
+          "lib": "std.posix"
+        },
+        {
+          "name": "getlogin",
+          "parent": "",
+          "lib": "std.posix"
+        },
+        {
+          "name": "getcwd",
+          "parent": "",
+          "lib": "std.posix"
+        },
+        {
+          "name": "getuid",
+          "parent": "",
+          "lib": "std.posix"
+        },
+        {
+          "name": "build",
+          "parent": "HttpResponseBuilder",
+          "lib": "stdx.net.http"
+        },
+        {
+          "name": "init",
+          "parent": "Client",
+          "lib": "stdx.net.http"
+        },
+        {
+          "name": "readToEnd",
+          "parent": "",
+          "lib": "std.io"
+        },
+        {
+          "name": "read",
+          "parent": "ConsoleReader",
+          "lib": "std.console"
+        },
+        {
+          "name": "readln",
+          "parent": "ConsoleReader",
+          "lib": "std.console"
+        },
+        {
+          "name": "get",
+          "parent": "Client",
+          "lib": "stdx.net.http"
+        },
+        {
+          "name": "put",
+          "parent": "Client",
+          "lib": "stdx.net.http"
+        }
+      ],
+      "CanonicalizeFunc": [
+        {
+          "name": "canonicalize",
+          "parent": "",
+          "lib": "std.fs"
+        }
+      ],
+      "VerifyFunc": [
+        {
+          "name": "isInSecureDir",
+          "parent": "",
+          "lib": "default"
+        }
+      ]
+    },
+    "cjlint/config/dataflow_rule_G_OTH_01.json": {
+      "SensitiveKeyword": [
+        "pwd",
+        "key",
+        "passwd",
+        "password",
+        "iv",
+        "token",
+        "cipher",
+        "pswd",
+        "psd",
+        "crypt",
+        "dec",
+        "enc",
+        "encode",
+        "auth",
+        "sms",
+        "message",
+        "mail",
+        "session",
+        "secret",
+        "session",
+        "account"
+      ]
+    },
+    "cjlint/config/exclude_lists.json": {
+      "G.OTH.01": [
+        {
+          "path": "xxx/example.cj",
+          "line": "42"
+        },
+        {
+          "path": "xxx/example.cj",
+          "line": "42",
+          "column": "2"
+        },
+        {
+          "path": "example.cj",
+          "line": "42",
+          "column": "2"
+        }
+      ],
+      "G.OTH.02": [],
+      "G.OTH.03": [],
+      "G.ENU.01": [],
+      "G.EXP.03": [],
+      "G.FMT.01": [],
+      "G.FIO.01": [],
+      "G.SEC.01": [],
+      "G.FUN.02": [],
+      "G.CON.01": [],
+      "G.CON.02": [],
+      "G.CON.03": [],
+      "G.SER.01": [],
+      "G.SER.02": [],
+      "G.SER.03": [],
+      "G.NAM.01": [],
+      "G.NAM.02": [],
+      "G.NAM.03": [],
+      "G.NAM.04": [],
+      "P.01": [],
+      "P.02": [],
+      "G.ERR.02": [],
+      "G.CHK.01": [],
+      "G.CHK.02": [],
+      "G.CHK.04": []
+    },
+    "cjlint/config/structural_rule_G_CHK_02.json": {
+      "ExternalDateFunc": [
+        {
+          "name": "getos",
+          "parent": "",
+          "lib": "std.posix"
+        },
+        {
+          "name": "gethostname",
+          "parent": "",
+          "lib": "std.posix"
+        },
+        {
+          "name": "getlogin",
+          "parent": "",
+          "lib": "std.posix"
+        },
+        {
+          "name": "getcwd",
+          "parent": "",
+          "lib": "std.posix"
+        },
+        {
+          "name": "getuid",
+          "parent": "",
+          "lib": "std.posix"
+        },
+        {
+          "name": "build",
+          "parent": "HttpResponseBuilder",
+          "lib": "stdx.net.http"
+        },
+        {
+          "name": "init",
+          "parent": "Client",
+          "lib": "stdx.net.http"
+        },
+        {
+          "name": "readToEnd",
+          "parent": "",
+          "lib": "std.io"
+        },
+        {
+          "name": "read",
+          "parent": "ConsoleReader",
+          "lib": "std.console"
+        },
+        {
+          "name": "readln",
+          "parent": "ConsoleReader",
+          "lib": "std.console"
+        },
+        {
+          "name": "get",
+          "parent": "Client",
+          "lib": "stdx.net.http"
+        },
+        {
+          "name": "put",
+          "parent": "Client",
+          "lib": "stdx.net.http"
+        }
+      ],
+      "ExternalDateFuncPassToVar": [
+        {
+          "name": "read",
+          "parent": "TcpSocket",
+          "lib": "std.net"
+        }
+      ]
+    },
+    "cjlint/config/structural_rule_G_CHK_04.json": {
+      "CheckType": [
+        {
+          "name": "itselfRepeated",
+          "regex": "\\([^\\(]*[\\+\\*][^\\(]*\\)[\\+\\*]"
+        },
+        {
+          "name": "subexpressionsOverlap",
+          "regex": "\\(([^\\(]+)\\|\\1+.*\\)[\\+\\*]"
+        },
+        {
+          "name": "redundantGroup",
+          "regex": "\\(\\[[^\\[]*\\]\\)"
+        }
+      ]
+    },
+    "cjlint/config/structural_rule_G_ERR_02.json": {
+      "SensitiveKeyword": [
+        "pwd",
+        "passwd",
+        "password"
+      ],
+      "SensitiveException": [
+        "IOException",
+        "FSException",
+        "ConcurrentModificationException",
+        "VirtualMachineError",
+        "StackOverflowError",
+        "OutOfMemoryError"
+      ]
+    },
+    "cjlint/config/structural_rule_G_FIO_02.json": {
+      "bufferObject": [
+        "buffer",
+        "bufferSize",
+        "writeLen",
+        "buf",
+        "bufSize",
+        "buff",
+        "buffSize",
+        "Len",
+        "size",
+        "writeSize"
+      ]
+    },
+    "cjlint/config/structural_rule_G_OTH_02.json": {
+      "RegexSet": [
+        "chmod|chown|usermod",
+        "[a-zA-Z][a-zA-Z0-9_-]{2,15}:[^:]?:\\d+:\\d*:[^:]*:[^:]*:[^\\n ]*",
+        "\\b([a-zA-Z]{0,1}00[1-9]\\d{5,6})|\\b([a-zA-Z]{0,1}30\\d{6})|\\b([a-zA-Z]{2}[1-9]\\d{5,7})|([a-zA-Z]*kf[1-9]\\d{4,9})"
+      ],
+      "SenInfoName": [
+        "passwd",
+        "password"
+      ],
+      "WeakPasscode": [
+        "paswd"
+      ]
+    },
+    "cjlint/config/structural_rule_G_OTH_03.json": {
+      "WhiteList": [
+        "https://cangjie-lang.cn/pages/LICENSE"
+      ]
+    },
+    "cjlint/config/structural_rule_G_OTH_04.json": {
+      "SensitiveDataVar": [
+        "pwd",
+        "passwd",
+        "password"
+      ]
+    },
+    "cjlint/config/structural_rule_G_SEC_01.json": {
+      "CheckingFunction": [
+        "\\b.*check.*\\b"
+      ]
+    },
+    "cjlint/config/structural_rule_G_SER_01.json": {
+      "SensitiveKeyword": [
+        "passwd",
+        "password"
+      ]
+    },
+    "cjlint/config/structural_rule_G_SYN_01.json": {
+      "SyntaxKeyword": [
+        "Import",
+        "Let",
+        "Spawn",
+        "Synchronized",
+        "Main",
+        "MacroQuote",
+        "Foreign",
+        "While",
+        "Extend",
+        "Type",
+        "Operator",
+        "GlobalVariable",
+        "Enum",
+        "Class",
+        "Interface",
+        "Struct",
+        "Generic",
+        "When",
+        "Match",
+        "TryCatch",
+        "HigherOrderFunc",
+        "PrimitiveType",
+        "ContainerType"
+      ]
+    },
+    "cjlint/config/structural_rule_P_03.json": {
+      "SecurityCheckFunctionInfo": [
+        {
+          "funcName": "securityCheck",
+          "fullPackageName": "example"
+        },
+        {
+          "funcName": "securityCheck",
+          "fullPackageName": "example.a"
+        }
+      ]
+    }
+  },
+  "cli": {
+    "source": "cjlint/src/main.cpp",
+    "options": [
+      "-h",
+      "-v",
+      "-f",
+      "-e",
+      "-o",
+      "-r",
+      "-c",
+      "-m",
+      "--import-path"
+    ],
+    "reportFormats": [
+      "json",
+      "csv"
+    ],
+    "obligations": [
+      "directory packages and subpackages",
+      "config-relative exclusions and re-inclusion",
+      "source ignore comments",
+      "diagnostic exclusions by rule/path/line/column",
+      "compiler diagnostics and failures",
+      "report write failures",
+      "installed default config and modules resolution"
+    ]
+  },
+  "referenceTests": [
+    "tests/cjlint-chir.mjs",
+    "tests/cjlint-native-toolchain.mjs"
+  ],
+  "ruleSources": [
+    "cjlint/src/rules/CMakeLists.txt",
+    "cjlint/src/rules/Rule.h",
+    "cjlint/src/rules/dataflow_rule_analysis/CMakeLists.txt",
+    "cjlint/src/rules/dataflow_rule_analysis/DataflowRule.cpp",
+    "cjlint/src/rules/dataflow_rule_analysis/DataflowRule.h",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_CHK_01/DataflowRuleGCHK01Check.cpp",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_CHK_01/DataflowRuleGCHK01Check.h",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_CHK_03/DataflowRuleGCHK03Check.cpp",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_CHK_03/DataflowRuleGCHK03Check.h",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_FIO_01/DataflowRuleGFIO01Check.cpp",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_FIO_01/DataflowRuleGFIO01Check.h",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_OTH_01/DataflowRuleGOTH01Check.cpp",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_OTH_01/DataflowRuleGOTH01Check.h",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_SER_03/DataflowRuleGSER03Checker.cpp",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_SER_03/DataflowRuleGSER03Checker.h",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_VAR_01/DataflowRuleVAR01Check.cpp",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_G_VAR_01/DataflowRuleVAR01Check.h",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_P_02/DataflowRuleP02Check.cpp",
+    "cjlint/src/rules/dataflow_rule_analysis/dataflow_rule_P_02/DataflowRuleP02Check.h",
+    "cjlint/src/rules/structural_rule_analysis/CMakeLists.txt",
+    "cjlint/src/rules/structural_rule_analysis/RegexRule.cpp",
+    "cjlint/src/rules/structural_rule_analysis/RegexRule.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRule.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRule.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleFFIC7/StructuralRuleFFIC7.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleFFIC7/StructuralRuleFFIC7.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCHK02/StructuralRuleGCHK02.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCHK02/StructuralRuleGCHK02.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCHK04/StructuralRuleGCHK04.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCHK04/StructuralRuleGCHK04.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCLS01/StructuralRuleGCLS01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCLS01/StructuralRuleGCLS01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCON01/StructuralRuleGCON01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCON01/StructuralRuleGCON01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCON02/StructuralRuleGCON02.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCON02/StructuralRuleGCON02.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCON03/StructuralRuleGCON03.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGCON03/StructuralRuleGCON03.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGDCL01/StructuralRuleGDCL01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGDCL01/StructuralRuleGDCL01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGDCL02/StructuralRuleGDCL02.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGDCL02/StructuralRuleGDCL02.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGENU01/StructuralRuleGENU01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGENU01/StructuralRuleGENU01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGENU02/StructuralRuleGENU02.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGENU02/StructuralRuleGENU02.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGERR01/StructuralRuleGERR01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGERR01/StructuralRuleGERR01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGERR02/StructuralRuleGERR02.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGERR02/StructuralRuleGERR02.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGERR03/StructuralRuleGERR03.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGERR03/StructuralRuleGERR03.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGERR04/StructuralRuleGERR04.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGERR04/StructuralRuleGERR04.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP01/StructuralRuleGEXP01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP01/StructuralRuleGEXP01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP02/StructuralRuleGEXP02.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP02/StructuralRuleGEXP02.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP03/StructuralRuleGEXP03.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP03/StructuralRuleGEXP03.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP04/StructuralRuleGEXP04.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP04/StructuralRuleGEXP04.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP05/StructuralRuleGEXP05.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP05/StructuralRuleGEXP05.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP06/StructuralRuleGEXP06.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP06/StructuralRuleGEXP06.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP07/StructuralRuleGEXP07.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGEXP07/StructuralRuleGEXP07.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFMT01/StructuralRuleGFMT01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFMT01/StructuralRuleGFMT01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFMT13/StructuralRuleGFMT13.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFMT13/StructuralRuleGFMT13.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFMT15/StructuralRuleGFMT15.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFMT15/StructuralRuleGFMT15.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFUN01/StructuralRuleGFUN01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFUN01/StructuralRuleGFUN01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFUN02/StructuralRuleGFUN02.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFUN02/StructuralRuleGFUN02.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFUNC03/StructuralRuleGFUNC03.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGFUNC03/StructuralRuleGFUNC03.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGITF01/StructuralRuleGITF01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGITF01/StructuralRuleGITF01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGITF02/StructuralRuleGITF02.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGITF02/StructuralRuleGITF02.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGITF03/StructuralRuleGITF03.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGITF03/StructuralRuleGITF03.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGITF04/StructuralRuleGITF04.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGITF04/StructuralRuleGITF04.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM01/StructuralRuleGNAM01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM01/StructuralRuleGNAM01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM02/StructuralRuleGNAM02.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM02/StructuralRuleGNAM02.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM03/StructuralRuleGNAM03.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM03/StructuralRuleGNAM03.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM04/StructuralRuleGNAM04.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM04/StructuralRuleGNAM04.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM05/StructuralRuleGNAM05.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM05/StructuralRuleGNAM05.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM06/StructuralRuleGNAM06.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGNAM06/StructuralRuleGNAM06.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOPR01/StructuralRuleGOPR01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOPR01/StructuralRuleGOPR01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOPR02/StructuralRuleGOPR02.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOPR02/StructuralRuleGOPR02.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOTH02/StructuralRuleGOTH02.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOTH02/StructuralRuleGOTH02.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOTH03/StructuralRuleGOTH03.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOTH03/StructuralRuleGOTH03.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOTH04/StructuralRuleGOTH04.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGOTH04/StructuralRuleGOTH04.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGPKG01/StructuralRuleGPKG01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGPKG01/StructuralRuleGPKG01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSEC01/StructuralRuleGSEC01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSEC01/StructuralRuleGSEC01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSER.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSER.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSER01/StructuralRuleGSER01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSER01/StructuralRuleGSER01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSER02/StructuralRuleGSER02.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSER02/StructuralRuleGSER02.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSYN01/StructuralRuleGSYN01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSYN01/StructuralRuleGSYN01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSYN01/StructuralRuleGSYN0101.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGSYN01/StructuralRuleGSYN0101.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGTYP03/StructuralRuleGTYP03.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGTYP03/StructuralRuleGTYP03.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGVAR02/StructuralRuleGVAR02.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGVAR02/StructuralRuleGVAR02.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGVAR03/StructuralRuleGVAR03.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleGVAR03/StructuralRuleGVAR03.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleP01/StructuralRuleP01.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleP01/StructuralRuleP01.h",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleP03/StructuralRuleP03.cpp",
+    "cjlint/src/rules/structural_rule_analysis/StructuralRuleP03/StructuralRuleP03.h"
+  ],
+  "coverage": [
+    {
+      "id": "G.CHK.01",
+      "defaultEnabled": true,
+      "stages": [
+        "CHIR"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.FIO.01",
+      "defaultEnabled": true,
+      "stages": [
+        "CHIR"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.OTH.01",
+      "defaultEnabled": true,
+      "stages": [
+        "CHIR"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.SER.03",
+      "defaultEnabled": true,
+      "stages": [
+        "CHIR"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "P.02",
+      "defaultEnabled": true,
+      "stages": [
+        "CHIR"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.VAR.01",
+      "defaultEnabled": true,
+      "stages": [
+        "CHIR"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.CHK.03",
+      "defaultEnabled": true,
+      "stages": [
+        "CHIR"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.ENU.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.EXP.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.EXP.02",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.ENU.02",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.EXP.03",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.DCL.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.DCL.02",
+      "defaultEnabled": true,
+      "stages": [
+        "PARSE"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.EXP.04",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.FMT.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.FMT.13",
+      "defaultEnabled": false,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.FMT.15",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.OTH.02",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.OTH.03",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.OTH.04",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.CON.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.CON.03",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.FUN.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.FUN.02",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.FUN.03",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.NAM.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.NAM.02",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.NAM.03",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.NAM.04",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.NAM.05",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.NAM.06",
+      "defaultEnabled": false,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.SEC.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.SER.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.SER.02",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.CHK.02",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.CHK.04",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.ERR.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.ERR.02",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.ERR.04",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.CON.02",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "P.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "P.03",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.VAR.02",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.VAR.03",
+      "defaultEnabled": false,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.PKG.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.ERR.03",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.EXP.05",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.EXP.06",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.EXP.07",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.OPR.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.OPR.02",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.ITF.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.ITF.02",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.CLS.01",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.ITF.03",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.ITF.04",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.SYN.01",
+      "defaultEnabled": false,
+      "stages": [
+        "PARSE",
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "G.TYP.03",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    },
+    {
+      "id": "FFI.C.7",
+      "defaultEnabled": true,
+      "stages": [
+        "SEMA"
+      ],
+      "status": "NOT_PORTED_OR_NOT_VERIFIED"
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+[
+  {
+    "name": "serial-flow-control",
+    "rule": "G.SER.03",
+    "dependencies": true,
+    "source": "import stdx.serialization.serialization.*\nclass Box <: Serializable<Box> {\n let value: Int64\n init(v: Int64) { value = v }\n public func serialize(): DataModel { DataModelStruct().add(Field(\"value\", value.serialize())) }\n public static func deserialize(dm: DataModel): Box { Box(Int64.deserialize((dm as DataModelStruct).getOrThrow().get(\"value\"))) }\n}\n",
+    "kinds": []
+  },
+  {
+    "name": "serial-flow-key-positive",
+    "rule": "G.SER.03",
+    "dependencies": true,
+    "source": "import stdx.serialization.serialization.*\nclass Box <: Serializable<Box> {\n let value: Int64\n init(v: Int64) { value = v }\n public func serialize(): DataModel { DataModelStruct().add(Field(\"value\", value.serialize())) }\n public static func deserialize(dm: DataModel): Box { Box(Int64.deserialize((dm as DataModelStruct).getOrThrow().get(\"missing\"))) }\n}\n",
+    "kinds": [
+      "G_SER_03_key_lack"
+    ]
+  },
+  {
+    "name": "serial-flow-direct-type-positive",
+    "rule": "G.SER.03",
+    "dependencies": true,
+    "source": "import stdx.serialization.serialization.*\nclass Box <: Serializable<Box> {\n let value: Int64\n init(v: Int64) { value = v }\n public func serialize(): DataModel { value.serialize() }\n public static func deserialize(dm: DataModel): Box { let text = String.deserialize(dm)\n Box(0) }\n}\n",
+    "kinds": [
+      "G_SER_03_type_lack"
+    ]
+  },
+  {
+    "name": "lock-order-positive",
+    "rule": "P.01",
+    "source": "package example\nimport std.sync.ReentrantMutex\nlet first = ReentrantMutex()\nlet second = ReentrantMutex()\nfunc one(): Unit { synchronized(first) { synchronized(second) {} } }\nfunc two(): Unit { synchronized(second) { synchronized(first) {} } }\n",
+    "kinds": [
+      "P_01_dead_lock"
+    ]
+  },
+  {
+    "name": "lock-order-control",
+    "rule": "P.01",
+    "source": "package example\nimport std.sync.ReentrantMutex\nlet first = ReentrantMutex()\nlet second = ReentrantMutex()\nfunc one(): Unit { synchronized(first) { synchronized(second) {} } }\nfunc two(): Unit { synchronized(first) { synchronized(second) {} } }\n",
+    "kinds": []
+  },
+  {
+    "name": "shadow-global-positive",
+    "rule": "G.DCL.01",
+    "source": "let value = 1\nfunc api(): Unit { let value = 2 }\n",
+    "kinds": [
+      "G_DCL_01_avoid_shadow"
+    ]
+  },
+  {
+    "name": "shadow-global-control",
+    "rule": "G.DCL.01",
+    "source": "let value = 1\nfunc api(): Unit { let other = 2 }\n",
+    "kinds": []
+  },
+  {
+    "name": "shadow-function-positive",
+    "rule": "G.DCL.01",
+    "source": "func act(value: Int64): Unit {}\nfunc api(): Unit { func act(value: Int64): Unit {} }\n",
+    "kinds": [
+      "G_DCL_01_avoid_shadow"
+    ]
+  },
+  {
+    "name": "shadow-generic-positive",
+    "rule": "G.DCL.01",
+    "source": "class Item<T> { public func act<T>(value: T): Unit {} }\n",
+    "kinds": [
+      "G_DCL_01_avoid_shadow"
+    ]
+  },
+  {
+    "name": "serialize-data-positive",
+    "rule": "G.SER.01",
+    "source": "extend String { public func serialize(): Unit {} }\nfunc api(): Unit { \"password\".serialize() }\n",
+    "kinds": [
+      "G_SER_01_serialize_sensitive_data"
+    ]
+  },
+  {
+    "name": "serialize-data-control",
+    "rule": "G.SER.01",
+    "source": "extend String { public func serialize(): Unit {} }\nfunc api(): Unit { \"ordinary\".serialize() }\n",
+    "kinds": []
+  }
+]

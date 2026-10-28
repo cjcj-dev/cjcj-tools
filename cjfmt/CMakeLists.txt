@@ -1,144 +1,70 @@
 # Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-# This source file is part of the Cangjie project, licensed under Apache-2.0
-# with Runtime Library Exception.
-#
-# See https://cangjie-lang.cn/pages/LICENSE for license information.
-
+# Licensed under Apache-2.0 with Runtime Library Exception.
 cmake_minimum_required(VERSION 3.14.1)
-project(cjfmt)
+project(cjfmt LANGUAGES NONE)
 
-if (MSVC AND ${CMAKE_VERSION} VERSION_GREATER "3.15")
-    cmake_policy(SET CMP0091 NEW)
-endif ()
-
-set(CJFMT_VERSION_STR "1.3.0-alpha.08")
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_FLAGS_RELEASE "-D_FORTIFY_SOURCE=2 -O2")
-
-if (CANGJIE_HOME)
-    message(STATUS "CANGJIE_HOME (from -D): ${CANGJIE_HOME}")
-elseif (DEFINED ENV{CANGJIE_HOME})
-    set(CANGJIE_HOME $ENV{CANGJIE_HOME})
-    message(STATUS "CANGJIE_HOME: ${CANGJIE_HOME}")
-else()
-    message("Please specify the path to the Cangjie SDK via the environment variable CANGJIE_HOME or by using the -DCANGJIE_HOME option.")
+# The sole producer is CJPM. No C++ compiler or language-server library is used.
+find_program(CJFMT_NODE NAMES node)
+if(NOT CJFMT_NODE)
+    message(FATAL_ERROR "Node.js is required to run the zx ESM build entry")
 endif()
-
-option(CJFMT_CODE_COVERAGE "Do cjfmt code coverage" OFF)
-
-if (NOT APPLE AND NOT WIN32 AND NOT CMAKE_BUILD_TYPE MATCHES Debug AND NOT CJFMT_CODE_COVERAGE)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-all -ftrapv -fPIE")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -s -Wl,-z,relro,-z,now,-z,noexecstack -Wl,-Bsymbolic -rdynamic -Wl,--no-undefined")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s -Wl,-z,relro,-z,now,-z,noexecstack -Wl,-Bsymbolic -rdynamic -Wl,--no-undefined")
-    SET(CMAKE_SKIP_RPATH TRUE)
-    SET(CMAKE_SKIP_BUILD_RPATH TRUE)
-endif ()
-
-if (WIN32)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-all -ftrapv -fPIE")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-insert-timestamp")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-insert-timestamp")
+foreach(name CANGJIE_HOME CJFMT_FRONTEND_CJO CJFMT_FRONTEND_LIB CJFMT_FRONTEND_NATIVE CJFMT_FRONTEND_REF CJFMT_SOURCE_REF)
+    if(NOT DEFINED ${name} AND DEFINED ENV{${name}})
+        set(${name} "$ENV{${name}}" CACHE STRING "Cangjie producer input")
+    endif()
+endforeach()
+if(NOT CJFMT_FRONTEND_LIB)
+    set(CJFMT_FRONTEND_LIB "${CJFMT_FRONTEND_CJO}")
 endif()
-
-if (APPLE)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-all -ftrapv -fPIE")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -s")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s")
-    SET(CMAKE_SKIP_RPATH TRUE)
-    SET(CMAKE_SKIP_BUILD_RPATH TRUE)
-endif ()
-
-if (CJFMT_CODE_COVERAGE)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-arcs -ftest-coverage")
-    add_compile_definitions(CANGJIE_ENABLE_GCOV)
-endif ()
-
-if (NOT CMAKE_INCLUDE_SYSTEM_FLAG_CXX)
-    set(CXX_SYSTEM_INCLUDE_CONFIGURATION_FLAG /experimental:external /external:W0)
-    set(CMAKE_INCLUDE_SYSTEM_FLAG_CXX /external:I)
-endif ()
-
-if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    message(STATUS "No build type selected, default to Debug")
-    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type (default Debug)" FORCE)
-endif ()
-
-string(TOUPPER "${CMAKE_BUILD_TYPE}" uppercase_CMAKE_BUILD_TYPE)
-string(TOLOWER "${CMAKE_BUILD_TYPE}" lowercase_CMAKE_BUILD_TYPE)
-
-if (CMAKE_BUILD_TYPE AND
-        NOT uppercase_CMAKE_BUILD_TYPE MATCHES "^(DEBUG|RELEASE)$")
-    message(FATAL_ERROR "Invalid value for CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
-endif ()
-
-set(OUTPUT_DIR ${CMAKE_SOURCE_DIR}/output)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build/build/bin)
-install(FILES ${CMAKE_SOURCE_DIR}/config/cangjie-format.toml DESTINATION config)
-
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-if (NOT CMAKE_BUILD_TYPE MATCHES Debug)
-    add_definitions(-DNDEBUG)
-endif ()
-
-add_compile_options(${CXX_SYSTEM_INCLUDE_CONFIGURATION_FLAG})
-if (NOT MSVC)
-    add_compile_options(
-            $<$<CONFIG:Release>:-fno-common>
-            $<$<CONFIG:Release>:-Wall>
-            $<$<CONFIG:Release>:-Wextra>
-            $<$<CONFIG:Release>:-Wfloat-equal>
-    )
-endif ()
-add_compile_definitions(CJFMT_VERSION="${CJFMT_VERSION_STR}")
-add_compile_definitions(CANGJIE_CODEGEN_CJNATIVE_BACKEND)
-
-include_directories(${CANGJIE_HOME}/include)
-include_directories(${CMAKE_SOURCE_DIR}/include)
-
-if (WIN32)
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/bin)
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin)
-    set(LIB_SSP ssp)
-else ()
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-endif ()
-
-if(NOT WIN32)
-    set(LIB_DL dl)
+foreach(name CANGJIE_HOME CJFMT_FRONTEND_CJO CJFMT_FRONTEND_LIB)
+    if(NOT IS_DIRECTORY "${${name}}")
+        message(FATAL_ERROR "${name} must name an existing directory in the selected SDK/frontend closure")
+    endif()
+endforeach()
+if(NOT CJFMT_SOURCE_REF)
+    execute_process(COMMAND git rev-parse HEAD WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE CJFMT_SOURCE_REF OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 endif()
-
-set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/third_party)
-set(CANGJIE_ROOT ${THIRD_PARTY_DIR}/cangjie)
-set(CANGJIE_OUTPUT ${CANGJIE_ROOT}/build)
-
-LIST(APPEND labList
-        pthread
-        ${LIB_SSP}
-        ${LIB_DL}
-        )
-
-add_library(cangjie SHARED IMPORTED)
-set_target_properties(cangjie PROPERTIES
-        IMPORTED_LOCATION ${CANGJIE_HOME}/tools/lib/libcangjie-lsp.so
-        )
-set_target_properties(cangjie PROPERTIES
-        IMPORTED_IMPLIB ${CANGJIE_HOME}/tools/lib/libcangjie-lsp.dll.a
-        )
-
-add_subdirectory(src)
-if(APPLE)
-    set_target_properties(cangjie PROPERTIES
-    IMPORTED_LOCATION ${CANGJIE_HOME}/tools/lib/libcangjie-lsp.dylib
-    )
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Debug or Release" FORCE)
 endif()
-install(TARGETS cjfmt RUNTIME DESTINATION bin)
+string(TOLOWER "${CMAKE_BUILD_TYPE}" cjfmt_mode)
+if(NOT cjfmt_mode MATCHES "^(debug|release)$")
+    message(FATAL_ERROR "CMAKE_BUILD_TYPE must be Debug or Release")
+endif()
+set(CJFMT_JOBS 4 CACHE STRING "CJPM build parallelism")
+set(CJFMT_TARGET x86_64-unknown-linux-gnu CACHE STRING "Target of the selected frontend binary closure")
+option(CJFMT_CODE_COVERAGE "Enable Cangjie compiler coverage" OFF)
+set(cjfmt_args --sdk "${CANGJIE_HOME}" --frontend-cjo "${CJFMT_FRONTEND_CJO}"
+    --frontend-lib "${CJFMT_FRONTEND_LIB}" --build-dir "${CMAKE_CURRENT_BINARY_DIR}/cangjie"
+    --output "${CMAKE_CURRENT_BINARY_DIR}/bin/cjfmt" --build-type "${cjfmt_mode}" --jobs "${CJFMT_JOBS}" --target "${CJFMT_TARGET}")
+foreach(pair "frontend-native;CJFMT_FRONTEND_NATIVE" "frontend-ref;CJFMT_FRONTEND_REF" "source-ref;CJFMT_SOURCE_REF")
+    list(GET pair 0 flag)
+    list(GET pair 1 variable)
+    if(${variable})
+        list(APPEND cjfmt_args "--${flag}" "${${variable}}")
+    endif()
+endforeach()
+if(CJFMT_CODE_COVERAGE)
+    list(APPEND cjfmt_args --coverage)
+endif()
+file(GLOB cjfmt_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cangjie/*.cj")
+file(GLOB_RECURSE cjfmt_frontend CONFIGURE_DEPENDS
+    "${CJFMT_FRONTEND_CJO}/*.cjo" "${CJFMT_FRONTEND_LIB}/*.a")
+# Reconfiguration, including Debug/Release or closure selection, invalidates the producer.
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/cjfmt-producer-inputs.txt" CONTENT "${cjfmt_args}\n")
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/bin/cjfmt" "${CMAKE_CURRENT_BINARY_DIR}/cjfmt-build.json"
+    COMMAND "${CMAKE_COMMAND}" -E remove "${CMAKE_CURRENT_BINARY_DIR}/cjfmt-ready"
+    COMMAND "${CJFMT_NODE}" "${CMAKE_CURRENT_SOURCE_DIR}/build/cangjie.mjs" build ${cjfmt_args}
+    COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_BINARY_DIR}/cangjie/inputs.json" "${CMAKE_CURRENT_BINARY_DIR}/cjfmt-build.json"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${CMAKE_CURRENT_BINARY_DIR}/cjfmt-ready"
+    DEPENDS ${cjfmt_sources} ${cjfmt_frontend} ${CJFMT_FRONTEND_NATIVE}
+        "${CMAKE_CURRENT_BINARY_DIR}/cjfmt-producer-inputs.txt"
+        "${CMAKE_CURRENT_SOURCE_DIR}/build/cangjie.mjs" "${CMAKE_CURRENT_SOURCE_DIR}/build/cjpm.toml.in"
+    COMMENT "Building cjfmt with the Cangjie frontend and CJPM" VERBATIM)
+add_custom_target(cjfmt ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/bin/cjfmt" "${CMAKE_CURRENT_BINARY_DIR}/cjfmt-build.json")
+# Install consumes an already built product; missing outputs are errors.
+install(CODE "if(NOT EXISTS \"${CMAKE_CURRENT_BINARY_DIR}/cjfmt-ready\")\nmessage(FATAL_ERROR \"cjfmt has no completed Cangjie build; install never builds implicitly\")\nendif()")
+install(PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/bin/cjfmt" DESTINATION bin)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cjfmt-build.json" DESTINATION .)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/config/cangjie-format.toml" DESTINATION config)

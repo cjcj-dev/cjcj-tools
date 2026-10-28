@@ -1,200 +1,72 @@
 cmake_minimum_required(VERSION 3.14.1)
-project(cangjieCodeCheck)
+project(cjlint LANGUAGES NONE)
 
-if (MSVC AND ${CMAKE_VERSION} VERSION_GREATER "3.14")
-    cmake_policy(SET CMP0091 NEW)
+# The product is Cangjie. src/ retains the fixed C++ behavior reference only.
+find_program(CJLINT_NODE NAMES node)
+if(NOT CJLINT_NODE)
+    message(FATAL_ERROR "Node.js is required for the cjlint build driver")
 endif()
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_EXTENSIONS OFF)
-set(CJLINT_VERSION_STR "1.3.0-alpha.08")
-set(CMAKE_CXX_FLAGS_RELEASE "-D_FORTIFY_SOURCE=2 -O2")
-
-if (CANGJIE_HOME)
-    message(STATUS "CANGJIE_HOME (from -D): ${CANGJIE_HOME}")
-elseif (DEFINED ENV{CANGJIE_HOME})
-    set(CANGJIE_HOME $ENV{CANGJIE_HOME})
-    message(STATUS "CANGJIE_HOME: ${CANGJIE_HOME}")
-else()
-    message("Please specify the path to the Cangjie SDK via the environment variable CANGJIE_HOME or by using the -DCANGJIE_HOME option.")
+set(CJLINT_FRONTEND_SOURCE "" CACHE PATH "Fixed read-only cjcj frontend source")
+set(CJLINT_FRONTEND_REF "" CACHE STRING "Full commit of the frontend producer")
+set(CJLINT_FRONTEND_ARTIFACTS "" CACHE PATH "Normal complete frontend CJO/archive root")
+set(CJLINT_FRONTEND_RUNTIME_OBJECT "" CACHE FILEPATH "Normal frontend runtime configuration object")
+set(CJLINT_LLVM_SHIM "" CACHE FILEPATH "Normal frontend LLVM infrastructure object")
+set(CJLINT_LLVM_LIBRARY "" CACHE FILEPATH "Matching frontend LLVM shared library")
+set(CJLINT_ANALYSIS_SDK "" CACHE PATH "SDK modules to analyze, separate from the host execution SDK")
+set(CJLINT_JOBS "4" CACHE STRING "Jobs for a normal frontend dependency build")
+if(NOT CANGJIE_HOME AND DEFINED ENV{CANGJIE_HOME})
+    set(CANGJIE_HOME "$ENV{CANGJIE_HOME}")
 endif()
-
-if(WIN32)
-    set(CMAKE_SYSTEM_PROCESSOR "x86_64")
+if(NOT EXISTS "${CANGJIE_HOME}/bin/cjc")
+    message(FATAL_ERROR "Set CANGJIE_HOME to the host Cangjie SDK")
 endif()
-string(TOLOWER ${CMAKE_SYSTEM_NAME}_${CMAKE_SYSTEM_PROCESSOR}_cjnative output_lib_dir)
-
-
-if (NOT APPLE AND NOT WIN32 AND NOT CMAKE_BUILD_TYPE MATCHES Debug)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-all -ftrapv -fPIE -fno-common -Wfloat-equal -Wall -Wextra")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -s -Wl,-z,relro,-z,now,-z,noexecstack -Wl,-Bsymbolic -rdynamic -Wl,--no-undefined")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s -pie -Wl,-z,relro,-z,now,-z,noexecstack -Wl,-Bsymbolic -rdynamic -Wl,--no-undefined")
-    SET(CMAKE_SKIP_RPATH TRUE)
-    SET(CMAKE_SKIP_BUILD_RPATH TRUE)
-endif ()
-
-if(WIN32)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-all -ftrapv -fPIE -fno-common -Wfloat-equal -Wall -Wextra")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-insert-timestamp")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-insert-timestamp")
+if(NOT EXISTS "${CJLINT_FRONTEND_SOURCE}/packages/parse/cjpm.toml")
+    message(FATAL_ERROR "CJLINT_FRONTEND_SOURCE must select the fixed Cangjie frontend source")
 endif()
-
-if (APPLE)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-all -ftrapv -fPIE -fno-common -Wfloat-equal -Wall -Wextra")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -s -pie")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s -pie")
-    SET(CMAKE_SKIP_RPATH TRUE)
-    SET(CMAKE_SKIP_BUILD_RPATH TRUE)
-endif ()
-
-if (NOT CMAKE_BUILD_TYPE MATCHES Debug)
-    add_definitions(-DNDEBUG)
-endif ()
-
-if (CANGJIE_WIN_NATIVE_DEV)
-    add_compile_definitions(CANGJIE_WIN_NATIVE_DEV)
-    message(STATUS "Building for MinGW Windows (Developing)")
+string(LENGTH "${CJLINT_FRONTEND_REF}" frontend_ref_length)
+if(NOT frontend_ref_length EQUAL 40 OR NOT CJLINT_FRONTEND_REF MATCHES "^[0-9a-f]+$")
+    message(FATAL_ERROR "CJLINT_FRONTEND_REF must identify the frontend producer with a full commit")
 endif()
-
-if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "aarch64")
-    add_definitions(-D__ARM__)
+if(NOT CJLINT_JOBS MATCHES "^[1-9][0-9]*$")
+    message(FATAL_ERROR "CJLINT_JOBS must be positive")
 endif()
-
-if(NOT CMAKE_INCLUDE_SYSTEM_FLAG_CXX)
-    set(CXX_SYSTEM_INCLUDE_CONFIGURATION_FLAG /experimental:external /external:W0)
-    set(CMAKE_INCLUDE_SYSTEM_FLAG_CXX /external:I)
+set(cangjie_build "${CMAKE_CURRENT_BINARY_DIR}/cangjie")
+set(frontend_artifact_args)
+if(CJLINT_FRONTEND_ARTIFACTS)
+    list(APPEND frontend_artifact_args --frontend-artifacts "${CJLINT_FRONTEND_ARTIFACTS}")
 endif()
-
-if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    message(STATUS "No build type selected, default to Debug")
-    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type (default Debug)" FORCE)
-endif ()
-
-string(TOUPPER "${CMAKE_BUILD_TYPE}" uppercase_CMAKE_BUILD_TYPE)
-
-if (CMAKE_BUILD_TYPE AND
-        NOT uppercase_CMAKE_BUILD_TYPE MATCHES "^(DEBUG|RELEASE)$")
-    message(FATAL_ERROR "Invalid value for CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
-endif ()
-
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-option(COVERAGE_FLAG "Do coverage" OFF)
-
-if (RUNTIME_RPATH)
-    if (APPLE)
-        add_link_options("LINKER:-rpath,${RUNTIME_RPATH}")
-    elseif (NOT WIN32)
-        add_link_options("LINKER:--disable-new-dtags,-rpath=${RUNTIME_RPATH}")
-    endif ()
-endif ()
-
-add_compile_definitions(CANGJIE_AST2CHIR)
-add_compile_definitions(CANGJIE_CODEGEN_CJNATIVE_BACKEND)
-
-# Older build.py versions put the selection in CC/CXX. CMake reloads that
-# first-configure argument from its compiler information even on warm builds.
-# Retire only that single legacy argument; preserve unrelated compiler flags.
-if(DEFINED GCC_TOOLCHAIN_FLAG)
-    foreach(lang C CXX)
-        separate_arguments(legacy_args NATIVE_COMMAND "${CMAKE_${lang}_COMPILER_ARG1}")
-        list(LENGTH legacy_args legacy_count)
-        if(legacy_count EQUAL 1 AND legacy_args MATCHES "^--gcc-toolchain=")
-            set(CMAKE_${lang}_COMPILER_ARG1 "" CACHE STRING "Arguments to compiler" FORCE)
-            set(CMAKE_${lang}_COMPILER_ARG1 "")
-        endif()
-    endforeach()
-endif()
-if(GCC_TOOLCHAIN_FLAG)
-    add_compile_options("--gcc-toolchain=${GCC_TOOLCHAIN_FLAG}")
-    add_link_options("--gcc-toolchain=${GCC_TOOLCHAIN_FLAG}")
-endif()
-
-foreach(libpath ${CANGJIE_TARGET_LIB})
-    add_link_options("-L${libpath}")
+foreach(required_input CJLINT_FRONTEND_ARTIFACTS CJLINT_FRONTEND_RUNTIME_OBJECT CJLINT_LLVM_SHIM CJLINT_LLVM_LIBRARY CJLINT_ANALYSIS_SDK)
+    if(NOT EXISTS "${${required_input}}")
+        message(FATAL_ERROR "${required_input} must select a normal full frontend producer input")
+    endif()
 endforeach()
+file(GLOB_RECURSE cjlint_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cangjie/src/*.cj")
+file(GLOB cjlint_configs CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/config/*")
+add_custom_command(OUTPUT "${cangjie_build}/product.json"
+    COMMAND "${CJLINT_NODE}" "${CMAKE_CURRENT_SOURCE_DIR}/build/build.mjs" build
+        --sdk "${CANGJIE_HOME}" --frontend-source "${CJLINT_FRONTEND_SOURCE}"
+        --frontend-ref "${CJLINT_FRONTEND_REF}" --build-dir "${cangjie_build}"
+        --jobs "${CJLINT_JOBS}" ${frontend_artifact_args}
+        --frontend-runtime-object "${CJLINT_FRONTEND_RUNTIME_OBJECT}"
+        --llvm-shim "${CJLINT_LLVM_SHIM}" --llvm-library "${CJLINT_LLVM_LIBRARY}"
+        --analysis-sdk "${CJLINT_ANALYSIS_SDK}"
+    DEPENDS ${cjlint_sources} ${cjlint_configs} "${CMAKE_CURRENT_SOURCE_DIR}/build/build.mjs"
+    VERBATIM USES_TERMINAL)
+add_custom_target(cjlint ALL DEPENDS "${cangjie_build}/product.json")
+install(CODE "
+    execute_process(COMMAND \"${CJLINT_NODE}\" \"${CMAKE_CURRENT_SOURCE_DIR}/build/build.mjs\" install
+        --build-dir \"${cangjie_build}\" --prefix \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}\"
+        --analysis-sdk \"${CJLINT_ANALYSIS_SDK}\"
+        RESULT_VARIABLE install_rc)
+    if(NOT install_rc EQUAL 0)
+        message(FATAL_ERROR \"Cangjie cjlint install failed: \${install_rc}\")
+    endif()
+")
 
-add_compile_options(${CXX_SYSTEM_INCLUDE_CONFIGURATION_FLAG})
-
-if(WIN32)
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/bin)
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/bin)
-    set(LIB_SEC ssp)
-else()
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-endif()
-
-if(NOT WIN32)
-    set(LIB_DL dl)
-endif()
-
-set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/third_party)
-set(CANGJIE_ROOT ${CANGJIE_HOME})
-set(CJC_DIR ${CANGJIE_ROOT}/bin)
-if(NOT EXISTS "${JSON_ROOT}/include/nlohmann/json.hpp")
-    message(FATAL_ERROR "JSON_ROOT must select the fixed JSON source")
-endif()
-
-LIST(APPEND labList
-        pthread
-        ${LIB_SSP}
-        ${LIB_DL}
-        )
-
-if(COVERAGE_FLAG)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-arcs -ftest-coverage")
-    add_compile_definitions(CANGJIE_ENABLE_GCOV)
-endif()
-
-add_compile_definitions(CJLINT_VERSION="${CJLINT_VERSION_STR}")
-message(STATUS "Cangjie Lint: ${CJLINT_VERSION_STR}")
-
-include(../cmake/CjcVersion.cmake)
-cangjie_cjc_version_header("${CMAKE_CURRENT_BINARY_DIR}/generated/CjcVersion.h" CJC_VERSION)
-include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")
-
-if (BUILD_SHARED_LIBS)
-    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-endif ()
-if (CHAR_VERSION)
-    add_compile_definitions(VERSION_TAIL="${CHAR_VERSION}")
-endif ()
-
-set(JSON_HEADERS ${JSON_ROOT}/include)
-include_directories(${CMAKE_SOURCE_DIR}/include)
-include_directories(${JSON_HEADERS})
-include_directories(${CANGJIE_HOME}/include)
-
-if(WIN32 AND CMAKE_BUILD_TYPE MATCHES Debug)
-    set(WIN_DEBUG_USE_STATIC_LIB ON)
-endif()
-if(WIN_DEBUG_USE_STATIC_LIB)
-    add_library(cangjie-lsp STATIC IMPORTED)
-    set_target_properties(cangjie-lsp PROPERTIES
-        IMPORTED_LOCATION ${CANGJIE_HOME}/tools/lib/libcangjie-lsp.a
-    )
-else()
-    add_library(cangjie-lsp SHARED IMPORTED)
-    set_target_properties(cangjie-lsp PROPERTIES
-        IMPORTED_LOCATION ${CANGJIE_HOME}/tools/lib/libcangjie-lsp.so
-    )
-    set_target_properties(cangjie-lsp PROPERTIES
-        IMPORTED_IMPLIB ${CANGJIE_HOME}/tools/lib/libcangjie-lsp.dll.a
-    )
-endif()
-
-if(APPLE)
-    set_target_properties(cangjie-lsp PROPERTIES
-    IMPORTED_LOCATION ${CANGJIE_HOME}/tools/lib/libcangjie-lsp.dylib
-    )
-endif()
-
-add_subdirectory(config)
-add_subdirectory(src)
+# Package the same normal install tree; CPack executes the install rule above.
+set(CPACK_GENERATOR "TGZ")
+set(CPACK_PACKAGE_NAME "cjlint")
+set(CPACK_PACKAGE_VERSION "1.3.0-alpha.08")
+set(CPACK_PACKAGE_FILE_NAME "cjlint-${CPACK_PACKAGE_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_PACKAGING_INSTALL_PREFIX "/")
+include(CPack)

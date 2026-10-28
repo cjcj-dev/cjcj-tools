@@ -1,0 +1,12 @@
+--- a/Demangler.cj
++++ b/Demangler.cj
+@@ -1106,6 +1106,9 @@
+         if (MatchForward(MANGLE_FLOAT16_PREFIX, MANGLE_FLOAT16_PREFIX.size)) {
+             SkipString(MANGLE_FLOAT16_PREFIX)
+         } else {
++            if (ch == b'D') {
++                return Reject("invalid primitive type")
++            }
+             SkipChar(ch)
+         }
+         return DemangleInfo(GetPrimitiveDemangleMap(ch), DemanglerTypeKind.PRIMITIVE)

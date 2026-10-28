@@ -1,91 +1,42 @@
-# Copyright (c) Huawei Technologies Co., Ltd. 2025-2026. All rights reserved.
-# This source file is part of the Cangjie project, licensed under Apache-2.0
-# with Runtime Library Exception.
-#
-# See https://cangjie-lang.cn/pages/LICENSE for license information.
-
-cmake_minimum_required(VERSION 3.10)
-
-# Preserve an explicit user/cache Release selection while keeping the original
-# default for a fresh tree.
-set(CMAKE_CXX_FLAGS_RELEASE "-D_FORTIFY_SOURCE=2 -O2" CACHE STRING "Release C++ flags")
-project("cjprof")
-include(cmake/Coverage.cmake)
-include(GNUInstallDirs)
-set(CJPROF_TARGET "native" CACHE STRING "Selected producer target")
-
-set(CMAKE_CXX_STANDARD 17)
-set(CJPROF_VERSION_STR "1.3.0-alpha.08")
-set(STRIP_FLAG "-s")
-
-option(STRIP_LIB_PREFIX "Strip 'lib' prefix" OFF)
-
-if (STRIP_LIB_PREFIX)
-    set(CMAKE_SHARED_LIBRARY_PREFIX "")
+# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+# Licensed under Apache-2.0 with Runtime Library Exception.
+cmake_minimum_required(VERSION 3.16)
+project(cjprof LANGUAGES NONE)
+if(NOT CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux" OR NOT CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+  message(FATAL_ERROR "This Cangjie producer currently supports Linux x86-64")
 endif()
-
-if (NOT APPLE AND NOT WIN32)
-  set(LINK_FLAGS "-rdynamic -Wl,-z,relro,-z,now,-z,noexecstack -Wl,-Bsymbolic -Wl,--no-undefined")
-endif ()
-
-if (WIN32)
-  set(LINK_FLAGS "-Wl,--no-insert-timestamp -Wl,--no-undefined")
-  add_compile_definitions(_WIN32_WINNT=0x0A00)
-endif ()
-
-if (APPLE)
-  set(LINK_FLAGS "-rdynamic")
-endif ()
-
-if(CMAKE_BUILD_TYPE MATCHES Release)
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LINK_FLAGS} ${STRIP_FLAG}")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${LINK_FLAGS} ${STRIP_FLAG}")
-else()
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LINK_FLAGS}")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${LINK_FLAGS}")
-endif()
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector-all -ftrapv -fPIE")
-
-set(COV 0)
-set(CMAKE_SKIP_RPATH TRUE)
-set(CMAKE_SKIP_BUILD_RPATH TRUE)
-
-add_compile_definitions(CJNATIVE=1)
-add_compile_definitions(CJPROF_VERSION="${CJPROF_VERSION_STR}")
-message(STATUS "Cangjie Profile: ${CJPROF_VERSION_STR}")
-
-if(NOT CMAKE_BACKEND)
-    set(CMAKE_BACKEND cjnative)
-endif()
-
-if(CMAKE_BACKEND STREQUAL "cjnative")
-  message(STATUS "Configuring cjnatie build")
-  add_compile_definitions(BACKEND=1)
-else()
-  message(WARNING "Unknown build type: ${CMAKE_BUILD_TYPE}")
-endif()
-
-foreach(required CJPROF_JSON_SOURCE CJPROF_HTTPLIB_SOURCE CJPROF_RUNTIME_SOURCE CJPROF_BOUNDS_SOURCE)
-  if(NOT IS_DIRECTORY "${${required}}")
-    message(FATAL_ERROR "Missing selected dependency ${required}")
+find_program(NODE_EXECUTABLE node REQUIRED)
+set(CJPROF_SDK "$ENV{CANGJIE_HOME}" CACHE PATH "Selected compiler and matching runtime/std SDK")
+set(CJPROF_JNI_HOME "$ENV{JAVA_HOME}" CACHE PATH "JDK providing the real JNI headers")
+set(CJPROF_RUNTIME_HEADER "" CACHE FILEPATH "Public Cangjie.h matching the selected runtime ABI")
+set(CJPROF_LOMBOK_JAR "$ENV{CJPROF_LOMBOK_JAR}" CACHE FILEPATH "Selected Lombok processor for the existing Java API")
+foreach(required CJPROF_SDK CJPROF_JNI_HOME CJPROF_RUNTIME_HEADER CJPROF_LOMBOK_JAR)
+  if(NOT EXISTS "${${required}}")
+    message(FATAL_ERROR "Missing explicitly selected ${required}")
   endif()
 endforeach()
-include_directories("${CJPROF_HTTPLIB_SOURCE}")
-include_directories("${CJPROF_JSON_SOURCE}/include")
-
-if (NOT APPLE AND NOT WIN32)
-  include_directories("${CJPROF_BOUNDS_SOURCE}/include")
-  include_directories("${CJPROF_RUNTIME_SOURCE}/runtime/src")
-  add_subdirectory("${CJPROF_RUNTIME_SOURCE}/runtime/src/Demangler" "${CMAKE_BINARY_DIR}/demangler" EXCLUDE_FROM_ALL)
-  set_target_properties(cangjie-demangle PROPERTIES EXCLUDE_FROM_ALL FALSE)
-endif()
-
-include_directories(include)
-add_subdirectory(src)
-
-option(BUILD_TESTING "Build the gtest-based C++ API tests" OFF)
+set(product "${CMAKE_CURRENT_BINARY_DIR}/product")
+file(GLOB sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/cangjie/*.cj")
+file(GLOB_RECURSE assets CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/static/*")
+file(GLOB_RECURSE java_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/bridge/jni/java/*.java")
+set(builder "${CMAKE_CURRENT_SOURCE_DIR}/build/build.mjs")
+add_custom_command(
+  OUTPUT "${product}/cjprof" "${product}/libcjprof-cangjie.so" "${product}/libcjprof-jni.so" "${product}/build-facts.json" "${product}/cjprof.jar"
+  COMMAND "${CMAKE_COMMAND}" -E env
+    "CANGJIE_HOME=${CJPROF_SDK}"
+    "LD_LIBRARY_PATH=${CJPROF_SDK}/runtime/lib/linux_x86_64_cjnative:${CJPROF_SDK}/tools/lib"
+    "${NODE_EXECUTABLE}" "${builder}" build --sdk "${CJPROF_SDK}"
+    --jni-home "${CJPROF_JNI_HOME}" --runtime-header "${CJPROF_RUNTIME_HEADER}" --lombok-jar "${CJPROF_LOMBOK_JAR}" --build-dir "${product}"
+  DEPENDS ${sources} ${assets} ${java_sources} "${CJPROF_LOMBOK_JAR}" "${builder}" "${CMAKE_CURRENT_SOURCE_DIR}/build/jni-bootstrap.c" "${CJPROF_RUNTIME_HEADER}"
+  VERBATIM)
+add_custom_target(cjprof ALL DEPENDS "${product}/cjprof" "${product}/libcjprof-cangjie.so" "${product}/libcjprof-jni.so" "${product}/build-facts.json" "${product}/cjprof.jar")
+install(PROGRAMS "${product}/cjprof" DESTINATION bin)
+install(FILES "${product}/libcjprof-cangjie.so" "${product}/libcjprof-jni.so" DESTINATION lib)
+install(DIRECTORY "${product}/config/static" DESTINATION config)
+install(FILES "${product}/build-facts.json" DESTINATION .)
+install(FILES "${product}/cjprof.jar" DESTINATION share/java)
+option(BUILD_TESTING "Test the installed Cangjie public CLI and HTTP entry" OFF)
 if(BUILD_TESTING)
-    enable_testing()
-    add_subdirectory(tests)
+  enable_testing()
+  add_subdirectory(tests)
 endif()
