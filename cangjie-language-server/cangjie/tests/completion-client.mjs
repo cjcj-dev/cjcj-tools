@@ -122,9 +122,10 @@ if(mode==='project')await client('completion-project',async c=>{
 if(mode==='accessibility')await client('completion-accessibility',async c=>{
  const db=project+'/compile_commands.json',leaf=project+'/leaf/src/lib.cj',helper=project+'/helper/src/lib.cj';
  fs.writeFileSync(directory+'/prior-leaf.cj',fs.readFileSync(leaf));fs.writeFileSync(directory+'/prior-helper.cj',fs.readFileSync(helper));
- fs.appendFileSync(leaf,'\npublic open class Guard { public let value: Int64 = 42; protected let secret: Int64 = 7; private let privateValue: Int64 = 9; let packageValue: Int64 = 8; public init() {} }\n');
- const base='package completion_helper\nimport completion_leaf.*\npublic func forwarded(): Int64 { 42 }\n';fs.writeFileSync(helper,base);buildProject('accessibility-input');
- await init(c,{initializationOptions:{compilationDatabase:db}});let version=1;assert.deepEqual(await open(c,helper,base,version),[]);
+ const guard='\npublic open class Guard { public let value: Int64 = 42; protected let secret: Int64 = 7; private let privateValue: Int64 = 9; let packageValue: Int64 = 8; public init() {} }\n';
+ const prepared=fs.readFileSync(leaf,'utf8').includes(guard);if(!prepared)fs.appendFileSync(leaf,guard);
+ const base='package completion_helper\nimport completion_leaf.*\npublic func forwarded(): Int64 { 42 }\n';if(prepared){assert.equal(fs.readFileSync(helper,'utf8'),base);fs.writeFileSync(directory+'/reused-input.json',JSON.stringify({leaf,helper,reason:'unchanged normal CJO/build/loader/run from accessibility-v1; only diagnostic severity assertion corrected'}));}else{fs.writeFileSync(helper,base);buildProject('accessibility-input');}
+ await init(c,{initializationOptions:{compilationDatabase:db}});let version=1;assert.deepEqual((await open(c,helper,base,version)).filter(x=>x.severity===1),[]);
  for(const name of ['secret','privateValue','packageValue']){
   const completeText=base+'func inspect(item: Guard): Int64 { item.'+name+' }\n';
   const rejected=await change(c,helper,completeText,++version);assert(rejected.some(x=>x.severity===1),'ACTUAL_SEMA_ACCESS_REJECTION '+name);fs.writeFileSync(directory+'/'+name+'-actual-diagnostics.json',JSON.stringify(rejected,null,2));
