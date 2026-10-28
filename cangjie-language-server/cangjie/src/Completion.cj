@@ -63,26 +63,31 @@ public class CompletionName {
 }
 
 extend SemanticDocument {
-    public func CompletionNames(marker: String, at: Int64, prefix: String): Array<CompletionName> {
-        // A request-local spelling repair cannot certify errors outside its
-        // token. Preserve and reject these real diagnostics before exploring
-        // names; never convert an unrelated failure into an empty result.
+    public func CompletionExternalError(marker: String, at: Int64): String {
+        // Preserve diagnostics outside the hole. A matching candidate must
+        // repair the entire normal SEMA input; these diagnostics forbid
+        // unrelated fallback names from certifying an empty result.
         for (diagnostic in records) {
             if (diagnostic.diagSeverity != DiagSeverity.DS_ERROR) { continue }
             let begin = if (diagnostic.isRefactor) { diagnostic.mainHint.range.begin } else { diagnostic.start }
             let end = if (diagnostic.isRefactor) { diagnostic.mainHint.range.end } else { diagnostic.end }
             let message = if (diagnostic.isRefactor) { diagnostic.errorMessage } else { diagnostic.diagMessage }
-            if (begin.fileID == 0 || end.fileID != begin.fileID) { throw IllegalArgumentException(message) }
+            if (begin.fileID == 0 || end.fileID != begin.fileID) { return message }
             let source = compiler.GetSourceManager().GetSource(begin.fileID)
             let first = source.PosToOffset(begin); let last = max(first, source.PosToOffset(end))
             if (source.path != snapshot.uri || last < at || first > at + marker.size) {
-                throw IllegalArgumentException(message)
+                return message
             }
         }
+        return ""
+    }
+
+    public func CompletionNames(marker: String, at: Int64, prefix: String): Array<CompletionName> {
         let holes = ArrayList<Node>()
         for (pkg in compiler.GetSourcePackages()) { for (file in pkg.files) {
             Walker(file, visitPre: Some({ node: Node =>
                 var identifier: Option<Identifier> = None
+                if (let Some(content) <- (node as ImportContent)) { identifier = Some(content.identifier) }
                 if (let Some(ref) <- (node as RefExpr)) { identifier = Some(ref.ref.identifier) }
                 if (let Some(member) <- (node as MemberAccess)) { identifier = Some(member.field) }
                 if (let Some(ref) <- (node as RefType)) { identifier = Some(ref.ref.identifier) }
@@ -96,7 +101,8 @@ extend SemanticDocument {
                 VisitAction.WALK_CHILDREN
             }), walkExprDesugar: false).Walk()
         } }
-        if (holes.size != 1 || holes[0].curFile.isNone() || holes[0].scopeName.isEmpty()) {
+        if (holes.size != 1 || ((holes[0] as ImportContent).isNone() &&
+            (holes[0].curFile.isNone() || holes[0].scopeName.isEmpty()))) {
             throw IllegalArgumentException("Completion has no unambiguous current semantic hole")
         }
         let hole = holes[0]
@@ -117,6 +123,14 @@ extend SemanticDocument {
                     candidates.add(CompletionName(name, location, key, ASTKindName(decl.astKind)))
                 }
             }
+        }
+        if (let Some(content) <- (hole as ImportContent)) {
+            let packageName = content.GetPrefixPath()
+            if (packageName.isEmpty()) { throw IllegalArgumentException("Import completion requires a selected package") }
+            for ((name, declarations) in compiler.importManager.getOrThrow().GetPackageMembers(packageName)) {
+                for (decl in declarations) { add(name, decl) }
+            }
+            return candidates.toArray()
         }
         var receiver: Option<Node> = None
         if (let Some(member) <- (hole as MemberAccess)) { receiver = Some(member.baseExpr.getOrThrow()) }

@@ -67,11 +67,21 @@ class CompletionRequest {
     func result(): JsonValue {
         let probeText = changed(marker)
         let probe = compile(probeText)
-        let names = try { probe.CompletionNames(marker, span.first, "") }
+        let outsideError = probe.CompletionExternalError(marker, span.first)
+        let discovered = try { probe.CompletionNames(marker, span.first, "") }
             finally { probe.compiler.DestroyASTResources() }
+        // Try actual prefix candidates first. A successful normal SEMA repairs
+        // propagated hole errors as well. Only seek a nonmatching empty-result
+        // witness when the probe has no diagnostic outside the request token.
+        let names = ArrayList<CompletionName>()
+        for (name in discovered where name.name.startsWith(span.prefix)) { names.add(name) }
+        for (name in discovered where !name.name.startsWith(span.prefix)) { names.add(name) }
         var witnessed = false
         let emitted = HashSet<String>(); let items = ArrayList<JsonValue>()
         for (name in names) {
+            if (!witnessed && !name.name.startsWith(span.prefix) && !outsideError.isEmpty()) {
+                throw IllegalArgumentException(outsideError)
+            }
             if (emitted.contains(name.name) || (witnessed && !name.name.startsWith(span.prefix))) { continue }
             let text = changed(name.name)
             let semantic = compile(text)

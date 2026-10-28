@@ -135,3 +135,13 @@ if(mode==='accessibility')await client('completion-accessibility',async c=>{
  const input=marked(base+'func inspect(item: Guard): Int64 { item.va| }\n');await change(c,helper,input.text,++version);const normal=await complete(c,helper,input.point);assert.equal(normal.error,undefined);const item=normal.result.items.find(x=>x.label==='value');assert.equal(item?.detail,'value: Int64');assert.deepEqual(await change(c,helper,apply(input.text,item),++version),[]);
  await finish(c);
 },0);
+
+if(mode==='import-statement')await client('completion-import-statement',async c=>{
+ const db=project+'/compile_commands.json',helper=project+'/helper/src/lib.cj';let version=1;
+ const input=marked('package completion_helper\nimport completion_leaf.ans|wer\npublic func forwarded(): Int64 { answer() }\n');
+ await init(c,{initializationOptions:{compilationDatabase:db}});await open(c,helper,input.text,version);
+ const result=await complete(c,helper,input.point);assert.equal(result.error,undefined,'COMPLETION_IMPORT_STATEMENT '+JSON.stringify(result));
+ const item=result.result.items.find(x=>x.label==='answer');assert(item);assert(item.detail.includes('Int64'));
+ const applied=apply(input.text,item);assert.deepEqual(await change(c,helper,applied,++version),[]);fs.writeFileSync(helper,applied);buildProject('import-statement-applied');
+ await finish(c);
+},0);
