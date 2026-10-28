@@ -17,12 +17,28 @@ main(args: Array<String>): Int64 {
         if (args.size != 3) { return 2 }
         let path = args[1] + "/input.cj"
         let mode = args[2]
-        let hole = if (mode == "raw-dot") { "box." } else if (mode == "member") { "box.__completionHole" } else { "__completionHole" }
-        let source = "package completion_probe\nclass Box<T> {\n public let value: T\n private let secret: Int64 = 9\n public init(item: T) { value = item }\n}\nfunc use(parameter: Int64): Unit {\n let shadow: Int64 = 1\n let box = Box<Int64>(parameter)\n if (true) {\n  let shadow: Bool = true\n  let result = " + hole + "\n  let later: Int64 = 2\n }\n}\n"
+        let candidateMode = mode.startsWith("candidate-")
+        let requested = if (candidateMode) { mode[10..] } else { "" }
+        let hole = if (candidateMode) { match (requested) { case "value" => "box.value" case "secret" => "box.secret" case "unrelated" => "shadow" case _ => requested } } else if (mode == "raw-dot") { "box." } else if (mode == "member") { "box.__completionHole" } else { "__completionHole" }
+        let source = "package completion_probe\nclass Box<T> {\n public let value: T\n private let secret: Int64 = 9\n public init(item: T) { value = item }\n}\nfunc use(parameter: Int64): Unit {\n let shadow: Int64 = 1\n let box = Box<Int64>(parameter)\n if (true) {\n  let shadow: Bool = true\n  let result = " + hole + "\n  let later: Int64 = 2\n" + (if (requested == "unrelated") { "  let broken: Bool = 1\n" } else { "" }) + " }\n}\n"
         DiskFile.writeTo(path, source.toArray())
         let document = SemanticDocument(DocumentSnapshot(path, 1, source), args[0])
         println("COMPILE success=${document.succeeded} errors=${document.diagnostics.GetErrorCount()} records=${document.records.size}")
         for (d in document.records) { println("DIAGNOSTIC " + (if (d.isRefactor) { d.errorMessage } else { d.diagMessage })) }
+        if (candidateMode) {
+            let accepted = requested == "shadow" || requested == "parameter" || requested == "value"
+            if (document.succeeded != accepted) { throw Exception("CANDIDATE_SEMA_TARGET " + requested) }
+            if (accepted) {
+                let index = source.indexOf("let result = ").getOrThrow() + "let result = ".size
+                let location = ProtocolPositionAt(source, index + (if (requested == "value") { 4 } else { 0 }))
+                let hover = document.Hover(location).getOrThrow()
+                let expected = if (requested == "shadow") { "shadow: Bool" } else if (requested == "parameter") { "parameter: Int64" } else { "value: Int64" }
+                println("CANDIDATE_TYPE actual=" + hover.text + " expected=" + expected)
+                if (hover.text != expected) { throw Exception("CANDIDATE_TYPE_TARGET " + requested) }
+            } else if (document.records.isEmpty()) { throw Exception("CANDIDATE_REJECTION_DIAGNOSTIC " + requested) }
+            println("CANDIDATE_SEMA_PASS " + requested + " accepted=" + accepted.toString())
+            return 0
+        }
         let holes = Array<Int64>(1, repeat: 0)
         for (pkg in document.compiler.GetSourcePackages()) {
             let context = document.compiler.GetASTContextByPackage(pkg)
