@@ -46,7 +46,7 @@ func result(): Int64 {
     return victim
 }
 `;
-if(mode!=='project'&&mode!=='members')await client(mode==='target'?'capture-target':mode==='control'?'rename-control':'rename-local',async c=>{
+if(!['project','members','workspace'].includes(mode))await client(mode==='target'?'capture-target':mode==='control'?'rename-control':'rename-local',async c=>{
  const p=path.join(directory,'use.cj');fs.writeFileSync(p,capture);await init(c);assert.deepEqual(await open(c,p,capture),[],'VALID_CAPTURE_INPUT');
  if(mode==='target'||mode==='all'){
   const r=await query(c,p,capture,'victim:','rename','occupied');assert.equal(r.result,undefined,'RENAME_CAPTURE_TARGET');assert.match(r.error?.message??'',/reference binding/,'RENAME_CAPTURE_TARGET');console.log('RENAME_CAPTURE_REJECTED');
@@ -72,6 +72,18 @@ if(mode!=='project'&&mode!=='members')await client(mode==='target'?'capture-targ
  const duplicate=capture.replace('let victim: Int64 = 4','let victim: Int64 = 4\n    let duplicate: Int64 = 2');assert.deepEqual(await change(c,p,duplicate,++version),[]);assert((await query(c,p,duplicate,'victim:','rename','duplicate')).error,'DUPLICATE_DECL_REJECT');
  const broken=capture.replace('= 4','= true');assert((await change(c,p,broken,++version)).some(d=>d.severity===1));assert((await query(c,p,broken,'victim:','prepareRename')).error,'ERROR_SNAPSHOT_REJECT');
  assert.deepEqual(await change(c,p,capture,++version),[]);const last=version;c.send(note('textDocument/didChange',{textDocument:{uri:uri(p),version:last},contentChanges:[{text:broken}]}));const good=await query(c,p,capture,'victim:','rename','latest');assert.equal(good.error,undefined);assert.equal(good.result.documentChanges[0].textDocument.version,last,'STALE_NOTIFICATION_MUST_NOT_REPLACE_SNAPSHOT');
+ await finish(c);
+},0);
+if(mode==='workspace')await client('rename-workspace',async c=>{
+ const a=path.join(directory,'declaration.cj'),b=path.join(directory,'use.cj');
+ const first='package rename_workspace\nfunc answer(): Int64 { 42 }\n',second='package rename_workspace\nfunc use(): Int64 { /* answer unchanged */ return answer() }\n';
+ fs.writeFileSync(a,first);fs.writeFileSync(b,second);await init(c,{workspaceFolders:[{uri:uri(directory),name:'rename-workspace'}]});assert.deepEqual(await open(c,b,second),[]);
+ const r=await query(c,b,second,'answer()','rename','renamedAnswer');assert.equal(r.error,undefined,JSON.stringify(r));assert.equal(r.result.documentChanges.length,2,'OPEN_AND_UNOPENED_RENAME');
+ const changed=apply(r.result,new Map([[a,first],[b,second]]),new Map([[b,1]]));assert(changed.get(a).includes('func renamedAnswer'));assert(changed.get(b).includes('/* answer unchanged */'));
+ // A closed file changed after the semantic snapshot must not receive stale edits.
+ fs.writeFileSync(a,first+'\n');const rejected=await query(c,b,second,'answer()','rename','otherAnswer');assert.match(rejected.error?.message??'',/Disk source changed/,'CLOSED_FILE_CHANGE_REJECT');assert.equal(rejected.result,undefined);
+ for(const [file,text]of changed)fs.writeFileSync(file,text);assert.deepEqual(await change(c,b,changed.get(b),2),[],'APPLIED_WORKSPACE_RENAME');
+ const def=await query(c,b,changed.get(b),'renamedAnswer()','definition');assert.equal(def.result.uri,uri(a));assert.equal(def.result.range.start.line,1);
  await finish(c);
 },0);
 if(mode==='members')await client('rename-members',async c=>{
