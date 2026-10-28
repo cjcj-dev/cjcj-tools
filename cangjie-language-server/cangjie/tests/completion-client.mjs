@@ -25,6 +25,15 @@ const request=(id,method,params={})=>({jsonrpc:'2.0',id,method,params}),note=(me
 const uri=p=>pathToFileURL(p).href;
 const position=(text,needle,n=0)=>{let i=-1;for(let k=0;k<=n;k++){i=text.indexOf(needle,i+1);assert(i>=0,needle);}const lines=text.slice(0,i).split('\n');return {line:lines.length-1,character:lines.at(-1).length};};
 
+function buildProject(label){
+ const recipe=JSON.parse(fs.readFileSync(path.join(project,'../project-build-recipe.json'),'utf8'));
+ const started=new Date().toISOString(),r=spawnSync(recipe.argv[0],recipe.argv.slice(1),{cwd:project,env:recipe.env,encoding:'utf8',timeout:180000});
+ fs.writeFileSync(directory+'/'+label+'.json',JSON.stringify({...recipe,started,ended:new Date().toISOString(),rc:r.status,signal:r.signal,error:r.error?.message??null},null,2));fs.writeFileSync(directory+'/'+label+'.stdout',r.stdout??'');fs.writeFileSync(directory+'/'+label+'.stderr',r.stderr??'');assert.equal(r.status,0,label+' '+r.stderr);
+ const exe=project+'/target/release/bin/completion_app';assert(recipe.targetEnv,'explicit qualified target runtime environment');const env=recipe.targetEnv;
+ const loader=spawnSync('ldd',[exe],{env,encoding:'utf8'});fs.writeFileSync(directory+'/'+label+'-loader.json',JSON.stringify({argv:['ldd',exe],env,rc:loader.status,stdout:loader.stdout,stderr:loader.stderr},null,2));assert.equal(loader.status,0);assert(!loader.stdout.includes('not found'));assert(!loader.stdout.includes('/input/H/'));
+ const run=spawnSync(exe,[],{cwd:project,env,encoding:'utf8',timeout:30000});fs.writeFileSync(directory+'/'+label+'-run.json',JSON.stringify({argv:[exe],cwd:project,env,rc:run.status,signal:run.signal,error:run.error?.message??null,stdout:run.stdout,stderr:run.stderr},null,2));assert.equal(run.status,0,label+' actual program '+run.error+' '+run.stderr);
+}
+
 let serial=0;
 async function finish(c){c.send(request('stop','shutdown'));assert.equal((await c.take(x=>x.id==='stop')).result,null);c.send(note('exit'));c.end();}
 async function init(c,opts={}){c.send(request('init','initialize',opts));const r=await c.take(x=>x.id==='init');assert.deepEqual(r.result.capabilities.completionProvider.triggerCharacters,['.']);c.send(note('initialized'));}
@@ -78,3 +87,29 @@ for(const test of fixtures.filter(test=>mode==='basic'||mode.split(',').includes
  },0);
 }
 console.log('COMPLETION_STDIO_PASS '+cases.length);
+
+if(mode==='project')await client('completion-project',async c=>{
+ const db=project+'/compile_commands.json',helper=project+'/helper/src/lib.cj';
+ let version=1;
+ const initial=fs.readFileSync(helper,'utf8');
+ await init(c,{initializationOptions:{compilationDatabase:db}});assert.deepEqual(await open(c,helper,initial,version),[]);
+ const samples=[
+  {label:'imported',code:'package completion_helper\nimport completion_leaf.*\npublic func forwarded(): Int64 { ans|wer() }\n',name:'answer'},
+  {label:'alias',code:'package completion_helper\nimport completion_leaf.answer as importedAnswer\npublic func forwarded(): Int64 { importedAn|swer() }\n',name:'importedAnswer'},
+  {label:'qualified',code:'package completion_helper\nimport completion_leaf\npublic func forwarded(): Int64 { completion_leaf.ans|wer() }\n',name:'answer'},
+ ];
+ for(const sample of samples){
+  const input=marked(sample.code.replaceAll('\\n','\n'));await change(c,helper,input.text,++version);
+  const result=await complete(c,helper,input.point);assert.equal(result.error,undefined,'COMPLETION_PROJECT_TARGET '+sample.label+' '+JSON.stringify(result));
+  const item=result.result.items.find(x=>x.label===sample.name);assert(item,'COMPLETION_IMPORT_BINDING '+sample.label);assert(item.detail.includes('Int64'));
+  const applied=apply(input.text,item);assert.deepEqual(await change(c,helper,applied,++version),[],'COMPLETION_IMPORT_APPLY '+sample.label);fs.writeFileSync(helper,applied);buildProject('completion-'+sample.label);
+ }
+ const module=project+'/target/release/completion_leaf/completion_leaf.cjo';const hidden=module+'.completion-missing';assert(fs.existsSync(module));assert(!fs.existsSync(hidden));fs.renameSync(module,hidden);
+ try{
+  c.drain();c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:db}}));const d=(await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(helper))).params.diagnostics;assert(d.some(x=>x.severity===1));
+  const text=fs.readFileSync(helper,'utf8');const result=await complete(c,helper,position(text,'answer()'));assert(result.error,'COMPLETION_MISSING_CJO_REJECT');assert.equal(result.result,undefined);
+ }finally{fs.renameSync(hidden,module);}
+ c.drain();c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:db}}));assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(helper))).params.diagnostics,[]);
+ const text=fs.readFileSync(helper,'utf8');assert.equal((await complete(c,helper,position(text,'answer()'))).error,undefined,'COMPLETION_RESTORED_CJO');
+ await finish(c);
+},0);
