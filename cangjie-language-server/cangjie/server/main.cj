@@ -264,7 +264,7 @@ class Server {
             response(key, object([("capabilities", object([("positionEncoding", JsonString("utf-16")),
                 ("textDocumentSync", object([("openClose", JsonBool(true)), ("change", JsonInt(2))])),
                 ("definitionProvider", JsonBool(true)), ("referencesProvider", JsonBool(true)),
-                ("documentHighlightProvider", JsonBool(true))])),
+                ("documentHighlightProvider", JsonBool(true)), ("hoverProvider", JsonBool(true))])),
                 ("serverInfo", object([("name", JsonString("cangjie-lsp")), ("version", JsonString("0.1.0"))]))]))
             return
         }
@@ -296,13 +296,19 @@ class Server {
             documents.Close(path); semantics.remove(path); publish(path, old.version, []); analyze(); return
         }
         if (method == "textDocument/definition" || method == "textDocument/references" ||
-            method == "textDocument/documentHighlight") {
+            method == "textDocument/documentHighlight" || method == "textDocument/hover") {
             let path = filePath(string(field(params, "textDocument"), "uri")); let semantic = match (semantics.get(path)) { case Some(value) => value; case None =>
                 if (compilationDatabase.isEmpty()) { throw IllegalArgumentException("Document has no semantic snapshot") }
                 response(id.getOrThrow(), JsonNull()); return }
             if (!semantic.succeeded) { response(id.getOrThrow(), JsonNull()); return }
             let pos = position(field(params, "position"))
-            if (method == "textDocument/documentHighlight") {
+            if (method == "textDocument/hover") {
+                if (let Some(found) <- semantic.Hover(pos)) {
+                    response(id.getOrThrow(), object([("contents", object([
+                        ("kind", JsonString("plaintext")), ("value", JsonString(found.text))])),
+                        ("range", rangeJson(found.location.start, found.location.end))]))
+                } else { response(id.getOrThrow(), JsonNull()) }
+            } else if (method == "textDocument/documentHighlight") {
                 let highlights = ArrayList<JsonValue>()
                 // References resolves declaration identity, including shadowing.
                 // LSP highlights belong only to the requested document.

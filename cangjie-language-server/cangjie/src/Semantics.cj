@@ -2,7 +2,7 @@ package cangjie_lsp_core
 
 import std.collection.*
 import cangjie_lsp_protocol.*
-import cjcj::ast.{Node, Decl, RefExpr, MemberAccess, Identifier, Walker, VisitAction, Attribute}
+import cjcj::ast.{Node, Decl, RefExpr, MemberAccess, Identifier, Walker, VisitAction, Attribute, Ty}
 import cjcj::mangle.BaseMangler
 import cjcj::basic.DiagnosticEngine as BasicDiagnosticEngine
 import cjcj::basic.{Diagnostic, DiagnosticHandler, DiagHandlerKind, DiagSeverity}
@@ -32,12 +32,20 @@ private class ServerDiagnosticHandler <: DiagnosticHandler {
     }
 }
 
+public class SemanticHover {
+    public let text: String
+    public let location: SemanticLocation
+    public init(text: String, location: SemanticLocation) { this.text = text; this.location = location }
+}
+
 private class BoundOccurrence {
     let declaration: Decl
     let location: SemanticLocation
     let isDeclaration: Bool
-    init(declaration: Decl, location: SemanticLocation, isDeclaration: Bool) {
+    let resolvedType: Option<Ty>
+    init(declaration: Decl, location: SemanticLocation, isDeclaration: Bool, resolvedType: Option<Ty>) {
         this.declaration = declaration; this.location = location; this.isDeclaration = isDeclaration
+        this.resolvedType = resolvedType
     }
 }
 
@@ -96,24 +104,24 @@ public class SemanticDocument {
         return Some(SemanticLocation(source.path, ProtocolPositionAt(source.buffer, first), ProtocolPositionAt(source.buffer, last)))
     }
 
-    private func add(declaration: Decl, identifier: Identifier, isDeclaration: Bool): Unit {
+    private func add(declaration: Decl, identifier: Identifier, isDeclaration: Bool, resolvedType: Option<Ty>): Unit {
         if (let Some(found) <- location(identifier)) {
             for (old in occurrences) {
                 if (old.declaration == declaration && old.isDeclaration == isDeclaration &&
                     old.location.path == found.path && old.location.start.line == found.start.line &&
                     old.location.start.character == found.start.character) { return }
             }
-            occurrences.add(BoundOccurrence(declaration, found, isDeclaration))
+            occurrences.add(BoundOccurrence(declaration, found, isDeclaration, resolvedType))
         }
     }
 
     private func collect(node: Node): VisitAction {
-        if (let Some(declaration) <- (node as Decl)) { add(declaration, declaration.identifier, true) }
+        if (let Some(declaration) <- (node as Decl)) { add(declaration, declaration.identifier, true, declaration.GetTy()) }
         if (let Some(reference) <- (node as RefExpr)) {
-            if (let Some(target) <- reference.ref.target) { add(target, reference.ref.identifier, false) }
+            if (let Some(target) <- reference.ref.target) { add(target, reference.ref.identifier, false, reference.GetTy()) }
         }
         if (let Some(member) <- (node as MemberAccess)) {
-            if (let Some(target) <- member.target) { add(target, member.field, false) }
+            if (let Some(target) <- member.target) { add(target, member.field, false, member.GetTy()) }
         }
         return VisitAction.WALK_CHILDREN
     }
@@ -146,6 +154,26 @@ public class SemanticDocument {
                 (if (declarationsOnly) { item.isDeclaration } else { includeDeclaration || !item.isDeclaration })) { result.add(item.location) }
         }
         return result.toArray()
+    }
+
+    public func Hover(position: ProtocolPosition): Option<SemanticHover> {
+        if (!succeeded) { return None }
+        for (item in occurrences) {
+            let found = item.location
+            if (found.path != snapshot.uri || position.line != found.start.line ||
+                position.line != found.end.line || position.character < found.start.character ||
+                position.character >= found.end.character) { continue }
+            // A reference's type belongs to this resolved occurrence (including
+            // instantiated generics and selected overloads), not its spelling or
+            // the uninstantiated declaration in another compiler instance.
+            if (let Some(ty) <- item.resolvedType) {
+                if (!ty.IsInvalid() && !ty.HasInvalidTy()) {
+                    return Some(SemanticHover(item.declaration.identifier.Val() + ": " + ty.String(), found))
+                }
+            }
+            return None
+        }
+        return None
     }
 
     public func Definition(position: ProtocolPosition): Option<SemanticLocation> {
