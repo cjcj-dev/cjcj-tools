@@ -6,7 +6,8 @@ import {pathToFileURL} from 'node:url';
 const [exe,sdk,directory,mode]=process.argv.slice(2);fs.mkdirSync(directory,{recursive:true});
 const cases=[];
 const encode=value=>{const body=typeof value==='string'?value:JSON.stringify(value);return Buffer.concat([Buffer.from(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n`),Buffer.from(body)]);};
-async function client(label,body,expected){
+async function client(label,body,expected,selectedSdk=sdk){
+ if(mode==='analysis'&&!label.startsWith('analysis-'))return;
  if(mode==='highlight'&&label!=='document-highlight')return;
  if(mode==='highlight-control'&&label!=='highlight-definition-control')return;
  if(mode==='snapshot'&&label!=='error-snapshot-queries')return;
@@ -14,13 +15,13 @@ async function client(label,body,expected){
  if(mode==='control'&&label!=='independent-shutdown')return;
  if(mode==='target'&&label!=='lifecycle-semantics')return;
  const env={...process.env};for(const key of ['LD_LIBRARY_PATH','LD_PRELOAD','LD_AUDIT','CANGJIE_HOME','CANGJIE_PATH'])delete env[key];
- const started=new Date().toISOString(),p=spawn(exe,['--sdk',sdk],{env,stdio:['pipe','pipe','pipe']});let data=Buffer.alloc(0),stderr='',ended=false;const transcript=[];const queue=[],waiters=[];
+ const started=new Date().toISOString(),p=spawn(exe,['--sdk',selectedSdk],{env,stdio:['pipe','pipe','pipe']});let data=Buffer.alloc(0),stderr='',ended=false;const transcript=[];const queue=[],waiters=[];
  const closed=new Promise(resolve=>{p.on('error',error=>resolve({error:String(error)}));p.on('close',(rc,signal)=>{ended=true;resolve({rc,signal})});});
  p.stderr.on('data',b=>stderr+=b);p.stdout.on('data',chunk=>{transcript.push({direction:'receive-bytes',base64:chunk.toString('base64')});data=Buffer.concat([data,chunk]);for(;;){const boundary=data.indexOf('\r\n\r\n');if(boundary<0)break;const header=data.subarray(0,boundary).toString();const match=/^Content-Length: (\d+)$/m.exec(header);assert(match,'stdout is framed JSON-RPC, no compiler chatter');const size=Number(match[1]);if(data.length<boundary+4+size)break;const value=JSON.parse(data.subarray(boundary+4,boundary+4+size));data=data.subarray(boundary+4+size);transcript.push({direction:"receive",value});queue.push(value);for(const wake of waiters.splice(0))wake();}});
  async function take(predicate){const deadline=Date.now()+45000;while(Date.now()<deadline){let index=queue.findIndex(predicate);if(index>=0)return queue.splice(index,1)[0];if(ended)throw Error('server ended before response '+stderr);await Promise.race([new Promise(resolve=>waiters.push(resolve)),new Promise(resolve=>setTimeout(resolve,20))]);}throw Error('response timeout '+JSON.stringify(queue)+' '+stderr);}
  const api={send:value=>{transcript.push({direction:"send",value});p.stdin.write(encode(value));},raw:bytes=>{transcript.push({direction:"send-bytes",base64:bytes.toString("base64")});p.stdin.write(bytes);},take,end:()=>p.stdin.end()};
  const timeout=setTimeout(()=>p.kill('SIGTERM'),120000);let failure;
- try{await body(api);const result=await closed;assert.equal(result.rc,expected,label);assert.equal(result.signal,null);cases.push({label,argv:[exe,'--sdk',sdk],started,ended:new Date().toISOString(),...result,stderr,pass:true});}
+ try{await body(api);const result=await closed;assert.equal(result.rc,expected,label);assert.equal(result.signal,null);cases.push({label,argv:[exe,'--sdk',selectedSdk],started,ended:new Date().toISOString(),...result,stderr,pass:true});}
  catch(e){failure=e;if(!ended)p.kill('SIGTERM');const result=await closed;cases.push({label,started,ended:new Date().toISOString(),...result,stderr,pass:false,error:e.stack});}
  finally{clearTimeout(timeout);fs.writeFileSync(directory+'/'+label+'-transcript.json',JSON.stringify(transcript,null,2));fs.writeFileSync(directory+'/client-results.json',JSON.stringify(cases,null,2));}
  if(failure)throw failure;
@@ -185,5 +186,49 @@ async function highlightCase(c,onlyDefinition=false){
 }
 await client('document-highlight',c=>highlightCase(c),0);
 if(mode==='highlight-control')await client('highlight-definition-control',c=>highlightCase(c,true),0);
+
+
+if(mode==='analysis') {
+ const useDir=path.join(directory,'use'),controlDir=path.join(directory,'control');fs.mkdirSync(useDir);fs.mkdirSync(controlDir);
+ const source='package lsp_use\nimport lsp_leaf.*\npublic func use(): Int64 { return answer() }\n';
+ const controlSource='package leaf_control\npublic func control(): Int64 { return 7 }\n';
+ const useFile=useDir+'/use.cj',controlFile=controlDir+'/control.cj';fs.writeFileSync(useFile,source);fs.writeFileSync(controlFile,controlSource);
+ const useUri=pathToFileURL(useFile).href,controlUri=pathToFileURL(controlFile).href;
+ async function analysis(label,{selected=sdk,missing=false,noModules=false,typeCheck=false}={}) {
+  await client(label,async c=>{
+   c.send(request('init','initialize'));assert((await c.take(x=>x.id==='init')).result.capabilities);c.send(note('initialized'));
+   const open=(uri,text)=>c.send(note('textDocument/didOpen',{textDocument:{uri,version:1,languageId:'cangjie',text}}));
+   open(useUri,source);
+   const initial=(await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===useUri&&x.params.version===1)).params.diagnostics;
+   if(noModules) {
+    assert(initial.some(x=>x.severity===1&&x.range.start.line===0&&x.range.start.character===0&&/home|module|path/i.test(x.message)),'LSP_ANALYSIS_CONFIGURATION_DIAGNOSTIC');
+   } else if(missing) {
+    assert(initial.some(x=>x.severity===1&&/lsp_leaf/.test(x.message)),'LSP_MISSING_LEAF_TARGET');
+   } else assert.deepEqual(initial,[],'LSP_MAJOR1_LEAF_TARGET');
+   if(!noModules) {
+    open(controlUri,controlSource);
+    assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===controlUri)).params.diagnostics,[],'LSP_CORE_CONTROL');
+   }
+   if(typeCheck) {
+    c.send(note('textDocument/didChange',{textDocument:{uri:useUri,version:2},contentChanges:[{text:source.replace('use(): Int64','use(): Bool')}]}));
+    const red=(await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===useUri&&x.params.version===2)).params.diagnostics;
+    assert(red.some(x=>x.severity===1&&/Bool|Int64|type/.test(x.message)),'LSP_IMPORTED_TYPE_TARGET');
+    c.send(note('textDocument/didChange',{textDocument:{uri:useUri,version:3},contentChanges:[{text:source}]}));
+    assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===useUri&&x.params.version===3)).params.diagnostics,[],'LSP_IMPORTED_TYPE_RESTORED');
+   }
+   c.send(request('stop','shutdown'));assert.equal((await c.take(x=>x.id==='stop')).result,null);c.send(note('exit'));c.end();
+  },0,selected);
+  const result=cases.at(-1);assert.match(result.stderr,/LSP_ANALYSIS .*succeeded=/);
+  if(!missing&&!noModules)assert.match(result.stderr,/LSP_ANALYSIS .*succeeded=true errors=0/);
+ }
+ await analysis('analysis-type',{typeCheck:true});
+ const cjo=path.join(sdk,'modules/linux_x86_64_cjnative/lsp_leaf.cjo');
+ assert(!fs.existsSync(cjo+'.analysis-held'));fs.renameSync(cjo,cjo+'.analysis-held');
+ try {await analysis('analysis-missing',{missing:true});} finally {fs.renameSync(cjo+'.analysis-held',cjo);}
+ await analysis('analysis-restored');
+ const incomplete=path.join(directory,'no-modules');fs.mkdirSync(incomplete);fs.mkdirSync(incomplete+'/bin');
+ fs.symlinkSync(fs.realpathSync(path.join(sdk,'bin/cjc')),incomplete+'/bin/cjc');
+ await analysis('analysis-no-modules',{selected:incomplete,noModules:true});
+}
 
 console.log('LSP_SERVER_CLIENT_PASS processes='+cases.length+' mode='+(mode??'all'));
