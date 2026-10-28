@@ -144,7 +144,7 @@ class RenameTransaction {
             for ((name, old) in packages) {
                 if (completed.contains(name)) { continue }
                 var ready = true
-                for (dependency in old.ImportedPackages()) { if (packages.contains(dependency) && !completed.contains(dependency)) { ready = false } }
+                for (dependency in old.ImportedPackages()) { if (dependency != name && packages.contains(dependency) && !completed.contains(dependency)) { ready = false } }
                 if (!ready) { continue }
                 let peers = ArrayList<DocumentSnapshot>(); let args = ArrayList<String>()
                 if (let Some(project) <- graph) {
