@@ -242,7 +242,7 @@ func parseCommandLine(pa: ParsedArguments): Unit {
 func parseMultipleFiles(moduleNameTemp: String): Bool {
     let fileInfos = ArrayList<FileInfo>()
     let dir = Path(cla.directoryPath)
-    getFiles(fileInfos, dir)
+    getFiles(fileInfos, dir, inputType: InputType.ARKTS)
     if (fileInfos.isEmpty()) {
         println("Error: generation failed! Not found .d.ts or .d.ets file under ${cla.directoryPath}")
         return false
@@ -473,7 +473,7 @@ func getFiles(fileInfos: ArrayList<FileInfo>, dir: Path, inputType!: InputType =
     for (f in files) {
         if (f.isSymbolicLink()) {
         } else if (f.isDirectory()) {
-            getFiles(fileInfos, f.path)
+            getFiles(fileInfos, f.path, inputType: inputType)
         } else if (f.isRegular()) {
             let fileName = f.path.fileName
             match (inputType) {
