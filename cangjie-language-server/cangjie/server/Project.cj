@@ -3,6 +3,7 @@ package cangjie_lsp
 import std.collection.*
 import std.fs.*
 import stdx.encoding.json.*
+import cjcj::option.{CreateOptionTable, ArgList, ArgInstanceType, Group, ID, Kind}
 
 // A standard arguments-based compilation database is the selected project.
 // No workspace scan, build history, or package-name heuristic participates.
@@ -41,7 +42,26 @@ class ProjectCommand {
             i++
         }
         for (file in files) { result.add(file) }
-        return result.toArray()
+        // The database is a driver command. Use its real option metadata for
+        // the same DRIVER/GLOBAL split as GenerateFrontendOptions; do not send
+        // library/linker options to frontend-only CompilerInvocation.ParseArgs.
+        let parsed = ArgList()
+        if (!CreateOptionTable().ParseArgs(result.toArray(), parsed)) {
+            throw IllegalArgumentException("Invalid project driver arguments")
+        }
+        let frontend = ArrayList<String>([result[0]])
+        for (entry in parsed.entries) {
+            if (entry.argInstanceType == ArgInstanceType.Input) {
+                let value = parsed.inputArgs[entry.index].value
+                if (!value.endsWith(".a") && !value.endsWith(".o")) { frontend.add(value) }
+            } else {
+                let option = parsed.optionArgs[entry.index]
+                if (option.info.GetID() == ID.OUTPUT_FILE || option.info.BelongsGroup(Group.DRIVER)) { continue }
+                frontend.add(option.name)
+                if (option.info.GetKind() == Kind.SEPARATED) { frontend.add(option.value) }
+            }
+        }
+        return frontend.toArray()
     }
 }
 
