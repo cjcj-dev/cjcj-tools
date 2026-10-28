@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {spawn} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 const [exe,sdk,directory,project,mode='basic']=process.argv.slice(2);
 fs.mkdirSync(directory,{recursive:true});
@@ -37,6 +37,14 @@ function apply(text,item){const edit=item.textEdit;return text.slice(0,offset(te
 const prefix='package completion_user\n';
 const generic=prefix+'class Box<T> {\n public let value: T\n private let secret: Int64 = 9\n public init(item: T) { value = item }\n}\n';
 const fixtures=[
+ {label:'type-context',input:generic+'func use(): Unit { let item: Bo|x<Int64> = Box<Int64>(42) }\n',name:'Box',typeIncludes:'Box'},
+ {label:'generic-bool',input:generic+'func use(box: Box<Bool>): Bool { return box.va| }\n',name:'value',type:'value: Bool'},
+ {label:'inherited',input:prefix+'open class Base { public let value: Int64 = 42; public init() {} }\nclass Child <: Base { public init() { super() } }\nfunc use(child: Child): Int64 { child.va| }\n',name:'value',type:'value: Int64'},
+ {label:'static',input:prefix+'class Holder { public init() {}; public static func answer(): Int64 { 42 } }\nfunc use(): Int64 { Holder.ans|wer() }\n',name:'answer',typeIncludes:'Int64'},
+ {label:'overload',input:prefix+'func answer(x: Int64): Int64 { x }\nfunc answer(x: Bool): Bool { x }\nfunc use(): Int64 { ans|wer(42) }\n',name:'answer',typeIncludes:'Int64'},
+ {label:'extension',input:generic+'extend<T> Box<T> { public func read(): T { value } }\nfunc use(box: Box<Int64>): Int64 { box.re|ad() }\n',name:'read',typeIncludes:'Int64'},
+ {label:'empty-token',input:prefix+'func use(): Int64 { let answer = 42; return | }\n',name:'answer',type:'answer: Int64'},
+
  {label:'local',input:prefix+'main(): Int64 { let answer: Int64 = 42; return an| }\n',name:'answer',type:'answer: Int64',absent:['noSuchName']},
  {label:'shadow',input:prefix+'func use(): Unit { let shadow: Int64 = 1; if (true) { let shadow: Bool = true; let value = sh| } }\n',name:'shadow',type:'shadow: Bool'},
  {label:'member',input:generic+'func use(box: Box<Int64>): Int64 { return box.va| }\n',name:'value',type:'value: Int64',absent:['secret']},
@@ -60,7 +68,7 @@ for(const test of fixtures.filter(test=>mode==='basic'||mode.split(',').includes
    if(test.empty)assert.deepEqual(items,[],'COMPLETION_FILTER_TARGET '+test.label);
    else{
     const item=items.find(x=>x.label===test.name);assert(item,'COMPLETION_BINDING_TARGET '+test.label+' '+JSON.stringify(items));
-    assert.equal(item.detail,test.type,'COMPLETION_TYPE_TARGET '+test.label);
+    if(test.type)assert.equal(item.detail,test.type,'COMPLETION_TYPE_TARGET '+test.label); if(test.typeIncludes)assert(item.detail.includes(test.typeIncludes),'COMPLETION_RESOLVED_TYPE_TARGET '+test.label+' '+item.detail);
     for(const name of test.absent??[])assert(!items.some(x=>x.label===name),'COMPLETION_VISIBILITY_TARGET '+name);
     const edited=apply(input.text,item);fs.writeFileSync(p+'.applied',edited);
     const diagnostics=await change(c,p,edited,2);assert.deepEqual(diagnostics,[],'COMPLETION_APPLIED_SEMA_TARGET '+test.label);
