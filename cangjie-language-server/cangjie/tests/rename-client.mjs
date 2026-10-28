@@ -28,7 +28,8 @@ function buildProject(label){
  const recipe=JSON.parse(fs.readFileSync(path.join(project,'../project-build-recipe.json'),'utf8'));
  const started=new Date().toISOString(),r=spawnSync(recipe.argv[0],recipe.argv.slice(1),{cwd:project,env:recipe.env,encoding:'utf8',timeout:180000});
  fs.writeFileSync(directory+'/'+label+'.json',JSON.stringify({...recipe,started,ended:new Date().toISOString(),rc:r.status,signal:r.signal,error:r.error?.message??null},null,2));fs.writeFileSync(directory+'/'+label+'.stdout',r.stdout??'');fs.writeFileSync(directory+'/'+label+'.stderr',r.stderr??'');assert.equal(r.status,0,label+' '+r.stderr);
- const exe=project+'/target/release/bin/rename_app';const env={...recipe.env,LD_LIBRARY_PATH:recipe.env.CANGJIE_HOME+'/runtime/lib/linux_x86_64_cjnative:'+recipe.env.CANGJIE_HOME+'/lib/linux_x86_64_cjnative'};
+ const exe=project+'/target/release/bin/rename_app';assert(recipe.targetEnv,'explicit qualified target runtime environment');const env=recipe.targetEnv;
+ const loader=spawnSync('ldd',[exe],{env,encoding:'utf8'});fs.writeFileSync(directory+'/'+label+'-loader.json',JSON.stringify({argv:['ldd',exe],env,rc:loader.status,stdout:loader.stdout,stderr:loader.stderr},null,2));assert.equal(loader.status,0);assert(!loader.stdout.includes('not found'));assert(!loader.stdout.includes('/input/H/'));
  const run=spawnSync(exe,[],{cwd:project,env,encoding:'utf8',timeout:30000});fs.writeFileSync(directory+'/'+label+'-run.json',JSON.stringify({argv:[exe],cwd:project,env,rc:run.status,signal:run.signal,error:run.error?.message??null,stdout:run.stdout,stderr:run.stderr},null,2));assert.equal(run.status,0,label+' actual program '+run.error+' '+run.stderr);
 }
 async function finish(c){c.send(request('stop','shutdown'));assert.equal((await c.take(x=>x.id==='stop')).result,null);c.send(note('exit'));c.end();}
