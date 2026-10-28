@@ -73,7 +73,7 @@ if(mode!=='project')await client(mode==='control'?'definition-control':'resolved
  await hover(c,p,source,'shadow\n','shadow','Bool');
  await hover(c,p,source,'shadow\n','shadow','Int64',1);
  await hover(c,p,source,'unicode:','unicode','Int64');
- await hover(c,p,source,'same<T>','same','(T) -> T');
+ await hover(c,p,source,'same<T>','same','(Generics-T) -> Generics-T');
  assert.equal(await query(c,p,source,'/* 😀 */'),null,'comment is not a symbol');
  const boundary=position(source,'explicit:');boundary.character+='explicit'.length;const edge='q'+(++serial);c.send(request(edge,'textDocument/hover',{textDocument:{uri:uri(p)},position:boundary}));assert.equal((await c.take(x=>x.id===edge)).result,null);
  const simple='package hover_sample\nfunc answer(): Int64 { let value: Int64 = 4; return value }\n';
