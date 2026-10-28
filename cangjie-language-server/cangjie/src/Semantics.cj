@@ -154,8 +154,8 @@ public class SemanticDocument {
         // Walker visits MainDecl and its actual desugarDecl at the same token.
         // Preserve the source declaration identity; the generated function is
         // not a second editable declaration (and main remains non-renamable).
-        if (let Some(main) <- (node as MainDecl)) {
-            if (let Some(lowered) <- main.desugarDecl) { sourceDeclarations[lowered] = main }
+        if (let Some(entry) <- (node as MainDecl)) {
+            if (let Some(lowered) <- entry.desugarDecl) { sourceDeclarations[lowered] = entry }
         }
         if (let Some(declaration) <- (node as Decl)) { add(declaration, declaration.identifier, true, declaration.GetTy()) }
         if (let Some(reference) <- (node as RefExpr)) {
