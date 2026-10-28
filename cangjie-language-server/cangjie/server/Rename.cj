@@ -7,6 +7,7 @@ import std.console.Console
 import stdx.encoding.json.*
 import cangjie_lsp_core.*
 import cangjie_lsp_protocol.*
+import cjcj::utils.{FileUtil, SplitQualifiedName}
 
 foreign func mkdtemp(pattern: CPointer<UInt8>): CPointer<UInt8>
 
@@ -162,7 +163,12 @@ class RenameTransaction {
                     for (diag in candidate.records) { Console.stdErr.writeln(if (diag.isRefactor) { diag.errorMessage } else { diag.diagMessage }) }
                     throw IllegalArgumentException("Rename candidate failed semantic analysis")
                 }
-                File.writeTo(temporary + "/" + name + ".cjo", candidate.ExportCandidate())
+                // Match FindSerializationFile: grouped paths across all roots are
+                // searched before flat paths. A flat candidate would lose to an
+                // existing CJPM package even with the candidate root first.
+                let directory = temporary + "/" + FileUtil.ToCjoFileName(SplitQualifiedName(name)[0])
+                Directory.create(directory, recursive: true)
+                File.writeTo(directory + "/" + FileUtil.ToCjoFileName(name) + ".cjo", candidate.ExportCandidate())
                 nextDocs[name] = candidate; completed.add(name); progress = true
             }
             if (!progress) { throw IllegalArgumentException("Rename source package dependencies cannot be ordered") }
