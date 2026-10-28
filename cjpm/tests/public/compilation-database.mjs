@@ -12,7 +12,9 @@ function pkg(dir,name,body,deps=''){
 }
 pkg('leaf','project_leaf','package project_leaf\npublic func diskAnswer(): Int64 { return 42 }\n');
 pkg('helper','project_helper','package project_helper\nimport project_leaf.*\npublic func forwarded(): Int64 { return diskAnswer() }\n','[dependencies]\nproject_leaf = {path = "../leaf"}\n');
-pkg('app','project_app','package project_app\nimport project_helper.*\nimport lsp_leaf.*\npublic func use(): Int64 { return forwarded() + answer() }\n','[dependencies]\nproject_helper = {path = "../helper"}\n[target.x86_64-unknown-linux-gnu.bin-dependencies]\npath-option = ['+JSON.stringify(P+'/modules/linux_x86_64_cjnative')+']\n');
+fs.mkdirSync(project+'/binary/lsp_leaf',{recursive:true});
+for(const name of ['lsp_leaf.cjo','liblsp_leaf.a'])fs.copyFileSync(P+'/modules/linux_x86_64_cjnative/'+name,project+'/binary/lsp_leaf/'+name);
+pkg('app','project_app','package project_app\nimport project_helper.*\nimport lsp_leaf.*\npublic func use(): Int64 { return forwarded() + answer() }\n','[dependencies]\nproject_helper = {path = "../helper"}\n[target.x86_64-unknown-linux-gnu.bin-dependencies]\npath-option = ['+JSON.stringify(project+'/binary/lsp_leaf')+']\n');
 pkg('control','project_control','package project_control\npublic func independent(): Int64 { return 7 }\n');
 write(project+'/ignored/value.cj','package project_leaf\npublic func diskAnswer(): Bool { return true }\n');
 const args=['build','-V','-j','2','--target-dir',project+'/selected-target','--export-compile-commands',database];
