@@ -78,6 +78,7 @@ public class SemanticDocument {
     public let records: ArrayList<Diagnostic>
     private let occurrences = ArrayList<BoundOccurrence>()
     private let unsupportedImports = HashSet<Decl>()
+    private let sourceDeclarations = HashMap<Decl, Decl>()
 
     public init(snapshot: DocumentSnapshot, targetSdk: String, importPaths!: Array<String> = [], companions!: Array<DocumentSnapshot> = [], compilerArguments!: Array<String> = []) {
         this.snapshot = snapshot
@@ -126,13 +127,14 @@ public class SemanticDocument {
     }
 
     private func add(declaration: Decl, identifier: Identifier, isDeclaration: Bool, resolvedType: Option<Ty>): Unit {
+        let source = sourceDeclarations.get(declaration).getOrDefault({ => declaration })
         if (let Some(found) <- location(identifier)) {
             for (old in occurrences) {
-                if (old.declaration == declaration && old.isDeclaration == isDeclaration &&
+                if (old.declaration == source && old.isDeclaration == isDeclaration &&
                     old.location.path == found.path && old.location.start.line == found.start.line &&
                     old.location.start.character == found.start.character) { return }
             }
-            occurrences.add(BoundOccurrence(declaration, found, isDeclaration, resolvedType))
+            occurrences.add(BoundOccurrence(source, found, isDeclaration, resolvedType))
         }
     }
 
@@ -149,6 +151,12 @@ public class SemanticDocument {
     }
 
     private func collect(node: Node): VisitAction {
+        // Walker visits MainDecl and its actual desugarDecl at the same token.
+        // Preserve the source declaration identity; the generated function is
+        // not a second editable declaration (and main remains non-renamable).
+        if (let Some(main) <- (node as MainDecl)) {
+            if (let Some(lowered) <- main.desugarDecl) { sourceDeclarations[lowered] = main }
+        }
         if (let Some(declaration) <- (node as Decl)) { add(declaration, declaration.identifier, true, declaration.GetTy()) }
         if (let Some(reference) <- (node as RefExpr)) {
             if (let Some(target) <- reference.ref.target) {
