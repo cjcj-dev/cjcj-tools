@@ -64,6 +64,17 @@ class CompletionRequest {
         }
         return false
     }
+    func validateSnapshots(opened: Array<DocumentSnapshot>): Unit {
+        for (expected in peers) {
+            var current: Option<DocumentSnapshot> = None
+            for (snapshot in opened where snapshot.uri == expected.uri) { current = Some(snapshot) }
+            let actual = current.getOrDefault({ => DocumentSnapshot(expected.uri, 0,
+                String.fromUtf8(File.readFrom(expected.uri))) })
+            if (actual.version != expected.version || actual.text != expected.text) {
+                throw IllegalArgumentException("Completion snapshot changed")
+            }
+        }
+    }
     func result(): JsonValue {
         let probeText = changed(marker)
         let probe = compile(probeText)

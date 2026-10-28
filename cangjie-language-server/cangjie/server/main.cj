@@ -311,10 +311,9 @@ class Server {
             // Refresh real disk/configuration inputs; open buffer overlays remain authoritative.
             analyze()
             let path = filePath(string(field(params, "textDocument"), "uri"))
-            let snapshot = documents.Get(path)
             let completion = CompletionRequest(sdk, semantics, compilationDatabase, path, position(field(params, "position")))
             let result = completion.result()
-            if (documents.Get(path).version != snapshot.version) { throw IllegalArgumentException("Completion snapshot changed") }
+            completion.validateSnapshots(documents.Snapshots())
             response(id.getOrThrow(), result); return
         }
         if (method == "textDocument/prepareRename" || method == "textDocument/rename") {
