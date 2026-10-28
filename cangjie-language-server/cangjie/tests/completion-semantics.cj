@@ -54,6 +54,7 @@ main(args: Array<String>): Int64 {
             return 0
         }
         let holes = Array<Int64>(1, repeat: 0)
+        let checked = Array<Int64>(1, repeat: 0)
         for (pkg in document.compiler.GetSourcePackages()) {
             let context = document.compiler.GetASTContextByPackage(pkg)
             println("PACKAGE ${pkg.fullPackageName} context=${context.isSome()}")
@@ -67,7 +68,27 @@ main(args: Array<String>): Int64 {
                                 for (name in ["shadow", "parameter", "later", "box", "noSuchName"]) {
                                     let probe = RefExpr(SrcIdentifier(name, ref.begin, ref.end, false))
                                     CopyNodeScopeInfo(probe, ref)
-                                    show(document.compiler.GetGivenReferenceTarget(ctx, ref.scopeName, probe, true), name)
+                                    if (mode == "context" && probe.GetTy().isSome()) { throw Exception("CONTEXT_PROBE_ALREADY_TYPED") }
+                                    let found = document.compiler.GetGivenReferenceTarget(ctx, ref.scopeName, probe, true)
+                                    show(found, name)
+                                    if (mode == "context") {
+                                        if (ctx.symbolTable.isEmpty()) { throw Exception("CONTEXT_SYMBOLS_EMPTY") }
+                                        if (name == "later" || name == "noSuchName") {
+                                            if (!found.decls.isEmpty()) { throw Exception("CONTEXT_VISIBILITY_TARGET " + name) }
+                                        } else {
+                                            if (!found.hasDecl || found.decls.size != 1) { throw Exception("CONTEXT_DECL_TARGET " + name) }
+                                            let declaration = found.decls[0]
+                                            let line: Int64 = if (name == "shadow") { 11 } else if (name == "parameter") { 7 } else { 9 }
+                                            let expected = if (name == "shadow") { "Bool" } else if (name == "parameter") { "Int64" } else { "Box<Int64>" }
+                                            let actual = declaration.GetTy().getOrThrow().String()
+                                            let origin = document.compiler.GetSourceManager().GetSource(declaration.identifier.Begin().fileID)
+                                            println("CONTEXT_TARGET name=" + name + " line=" + declaration.identifier.Begin().line.toString() + " type=" + actual)
+                                            if (origin.path != path || declaration.identifier.Begin().line != line || actual != expected) {
+                                                throw Exception("CONTEXT_DECL_TYPE_TARGET " + name)
+                                            }
+                                        }
+                                        checked[0]++
+                                    }
                                 }
                             }
                         }
@@ -92,6 +113,12 @@ main(args: Array<String>): Int64 {
                     VisitAction.WALK_CHILDREN
                 }), walkExprDesugar: false).Walk()
             }
+        }
+        if (mode == "context") {
+            if (holes[0] != 1 || checked[0] != 5 || document.succeeded || document.diagnostics.GetErrorCount() != 1) {
+                throw Exception("CONTEXT_INCOMPLETE_INPUT_TARGET")
+            }
+            println("CONTEXT_LOOKUP_PASS checked=" + checked[0].toString())
         }
         println("OBSERVED holes=${holes[0]}")
         return 0
