@@ -244,7 +244,8 @@ public class SemanticDocument {
             decl.TestAnyAttr(Attribute.OVERRIDE, Attribute.OPEN, Attribute.ABSTRACT)) { return false }
         if (let Some(owner) <- decl.outerDecl) {
             if (let Some(inherited) <- (owner as InheritableDecl)) {
-                if (!inherited.inheritedTypes.isEmpty() || (owner as InterfaceDecl).isSome() || owner.IsOpen()) { return false }
+                if ((owner as InterfaceDecl).isSome()) { return false }
+                if ((decl as VarDecl).isNone() && (!inherited.inheritedTypes.isEmpty() || owner.IsOpen())) { return false }
             }
         }
         return (decl as VarDecl).isSome() || (decl as FuncDecl).isSome() || (decl as StructDecl).isSome() ||
