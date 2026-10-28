@@ -32,7 +32,7 @@ main(args: Array<String>): Int64 {
         if (mode == "old-name") {
             check(!consumer.succeeded && consumer.diagnostics.GetErrorCount() > 0, "old-name-rejected")
         } else {
-            for (record in consumer.records) { eprintln(record.message) }
+            for (record in consumer.records) { eprintln(if (record.isRefactor) { record.errorMessage } else { record.diagMessage }) }
             check(consumer.succeeded, "dependent-sema-" + mode)
             check(!consumer.ExportedTarget(ProtocolPosition(2, 35)).isEmpty(), "imported-target-identity")
         }
