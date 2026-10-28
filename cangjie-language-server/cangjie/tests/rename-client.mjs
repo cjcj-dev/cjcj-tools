@@ -47,7 +47,7 @@ func result(): Int64 {
     return victim
 }
 `;
-if(!['project','members','workspace','capability'].includes(mode))await client(mode==='target'?'capture-target':mode==='control'?'rename-control':'rename-local',async c=>{
+if(!['project','project-alias','project-unpacked','members','workspace','capability'].includes(mode))await client(mode==='target'?'capture-target':mode==='control'?'rename-control':'rename-local',async c=>{
  const p=path.join(directory,'use.cj');fs.writeFileSync(p,capture);await init(c);assert.deepEqual(await open(c,p,capture),[],'VALID_CAPTURE_INPUT');
  if(mode==='target'||mode==='all'){
   const r=await query(c,p,capture,'victim:','rename','occupied');assert.equal(r.result,undefined,'RENAME_CAPTURE_TARGET');assert.match(r.error?.message??'',/reference binding/,'RENAME_CAPTURE_TARGET');console.log('RENAME_CAPTURE_REJECTED');
@@ -106,8 +106,30 @@ if(mode==='members')await client('rename-members',async c=>{
  for(const test of cases){assert.deepEqual(await change(c,p,test.text,++version),[],'VALID_RELATED_MEMBER_INPUT');const rejected=await query(c,p,test.text,test.at,'prepareRename','',test.n);assert(rejected.error,'RELATED_MEMBER_PREPARE_REJECT');assert.equal(rejected.result,undefined);}
  await finish(c);
 },0);
+if(mode==='project-alias'||mode==='project-unpacked')await client(mode,async c=>{
+ const db=project+'/compile_commands.json',leaf=project+'/leaf/src/lib.cj',helper=project+'/helper/src/lib.cj',app=project+'/app/src/main.cj';
+ const before=mode==='project-alias'?'renamedAnswer':'finalAnswer',after=mode==='project-alias'?'finalAnswer':'unpackedAnswer';
+ if(mode==='project-alias'){
+  fs.writeFileSync(helper,'package rename_helper\nimport rename_leaf.renamedAnswer as importedAnswer\npublic func forwarded(): Int64 { importedAnswer() }\n');buildProject('alias-input');
+ }
+ const files=new Map([leaf,helper,app].map(p=>[p,fs.readFileSync(p,'utf8')]));fs.writeFileSync(directory+'/project-inputs.json',JSON.stringify(Object.fromEntries(files),null,2));
+ await init(c,{initializationOptions:{compilationDatabase:db}});assert.deepEqual(await open(c,helper,files.get(helper)),[]);
+ const alias=await query(c,helper,files.get(helper),'importedAnswer()','prepareRename');assert(alias.error,'ALIAS_NOT_SOURCE_NAME_REJECT');assert.equal(alias.result,undefined);
+ const r=await query(c,leaf,files.get(leaf),'func '+before,'rename',after,0);
+ // Request the identifier rather than the func keyword.
+ assert(r.error,'KEYWORD_HAS_NO_RENAME_BINDING');
+ const selected=await query(c,leaf,files.get(leaf),before+'():','rename',after);assert.equal(selected.error,undefined,JSON.stringify(selected));assert.equal(selected.result.documentChanges.length,2);
+ const changed=apply(selected.result,files,new Map([[helper,1]]));assert(changed.get(helper).includes('import rename_leaf.'+after+' as importedAnswer'));assert(changed.get(helper).includes('importedAnswer()'));assert(!changed.get(helper).includes('func forwarded(): Int64 { '+after));
+ for(const [file,text]of changed){fs.writeFileSync(file,text);files.set(file,text);}buildProject('alias-applied');assert.deepEqual(await change(c,helper,files.get(helper),2),[]);
+ const module=project+'/target/release/rename_leaf/rename_leaf.cjo';assert(fs.existsSync(module),'ACTUAL_LEAF_CJO');const missing=module+'.rename-missing';assert(!fs.existsSync(missing));fs.renameSync(module,missing);
+ try{
+  c.drain();c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:db}}));const diagnostics=(await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(helper))).params.diagnostics;assert(diagnostics.some(x=>x.severity===1),'MISSING_CJO_DIAGNOSTIC');const refused=await query(c,leaf,files.get(leaf),after+'():','prepareRename');assert(refused.error,'MISSING_CJO_RENAME_REJECT');assert.equal(refused.result,undefined);
+ }finally{fs.renameSync(missing,module);}
+ c.drain();c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:db}}));assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(helper))).params.diagnostics,[]);assert.equal((await query(c,leaf,files.get(leaf),after+'():','prepareRename')).error,undefined,'RESTORED_CJO_RENAME');
+ await finish(c);
+},0);
 if(mode==='project'||mode==='all')await client('rename-project',async c=>{
- const db=project+'/compile_commands.json',leaf=project+'/leaf/src/lib.cj',helper=project+'/helper/src/lib.cj',app=project+'/app/src/main.cj';const files=new Map([leaf,helper,app].map(p=>[p,fs.readFileSync(p,'utf8')]));
+ const db=project+'/compile_commands.json',leaf=project+'/leaf/src/lib.cj',helper=project+'/helper/src/lib.cj',app=project+'/app/src/main.cj';const files=new Map([leaf,helper,app].map(p=>[p,fs.readFileSync(p,'utf8')]));fs.writeFileSync(directory+'/project-inputs.json',JSON.stringify(Object.fromEntries(files),null,2));
  await init(c,{initializationOptions:{compilationDatabase:db}});assert.deepEqual(await open(c,helper,files.get(helper)),[]);const r=await query(c,helper,files.get(helper),'answer()','rename','renamedAnswer');assert.equal(r.error,undefined,JSON.stringify(r));assert.equal(r.result.documentChanges.length,2);const updated=apply(r.result,files,new Map([[helper,1]]));assert(updated.get(leaf).includes('func renamedAnswer'));assert(updated.get(helper).includes('renamedAnswer()'));for(const [p,text]of updated){fs.writeFileSync(p,text);files.set(p,text);}buildProject("applied-rename");assert.deepEqual(await change(c,helper,files.get(helper),2),[],'APPLIED_SOURCE_GRAPH_REANALYSIS');
  // The live server uses disk CJO until the normal build refresh. Candidate
  // validation above used the newly exported CJO, not those original artifacts.
