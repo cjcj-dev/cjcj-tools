@@ -83,7 +83,7 @@ main(args: Array<String>): Int64 {
                                             if (!found.hasDecl || found.decls.size != 1) { throw Exception("CONTEXT_DECL_TARGET " + name) }
                                             let declaration = found.decls[0]
                                             let line: Int64 = if (name == "shadow") { 11 } else if (name == "parameter") { 7 } else { 9 }
-                                            let expected = if (name == "shadow") { "Bool" } else if (name == "parameter") { "Int64" } else { "Box<Int64>" }
+                                            let expected = if (name == "shadow") { "Bool" } else if (name == "parameter") { "Int64" } else { "Class-Box<Int64>" }
                                             let actual = declaration.GetTy().getOrThrow().String()
                                             let origin = document.compiler.GetSourceManager().GetSource(declaration.identifier.Begin().fileID)
                                             println("CONTEXT_TARGET name=" + name + " line=" + declaration.identifier.Begin().line.toString() + " type=" + actual)
