@@ -59,7 +59,7 @@ class ProjectGraph {
             let rawFile = string(row, "file")
             let file = canonicalize(if (Path(rawFile).isAbsolute()) { rawFile } else { Path(directory).join(rawFile).toString() }).toString()
             let key = directory + "\u{0}" + field(row, "arguments").toString()
-            if (!commands.contains(key)) { commands[key] = ProjectCommand(directory, arguments) }
+            if (!commands.contains(key)) { commands[key] = ProjectCommand(directory, arguments.toArray()) }
             let command = commands[key]
             if (files.contains(file)) { throw IllegalArgumentException("Ambiguous compilation database entry: " + file) }
             command.files.add(file); files[file] = command
