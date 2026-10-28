@@ -48,7 +48,7 @@ const generic=prefix+'class Box<T> {\n public let value: T\n private let secret:
 const fixtures=[
  {label:'constraint-positive',input:prefix+'interface Allowed {}\nclass Value <: Allowed { public init() {} }\nclass Box<T> { public let value: T; public init(item: T) { value = item } }\nextend<T> Box<T> where T <: Allowed { public func gate(): Int64 { 42 } }\nfunc use(box: Box<Value>): Int64 { box.ga|te() }\n',name:'gate',typeIncludes:'Int64'},
  {label:'constraint-negative',input:prefix+'interface Allowed {}\nclass Box<T> { public let value: T; public init(item: T) { value = item } }\nextend<T> Box<T> where T <: Allowed { public func gate(): Int64 { 42 } }\nfunc use(box: Box<Int64>): Int64 { box.ga| }\n',empty:true},
- {label:'protected-filter',input:prefix+'open class Base { public let value: Int64 = 42; protected let secret: Int64 = 7; public init() {} }\nfunc use(item: Base): Int64 { item.se| }\n',empty:true},
+ {label:'protected-same-package',input:prefix+'open class Base { public let value: Int64 = 42; protected let secret: Int64 = 7; public init() {} }\nfunc use(item: Base): Int64 { item.se| }\n',name:'secret',type:'secret: Int64'},
  {label:'wrong-instance',input:prefix+'class Holder { public let value: Int64 = 42; public static let answer: Int64 = 42; public init() {} }\nfunc use(): Int64 { Holder.va| }\n',empty:true},
 
  {label:'type-context',input:generic+'func use(): Unit { let item: Bo|x<Int64> = Box<Int64>(42) }\n',name:'Box',typeIncludes:'Box'},
@@ -116,5 +116,21 @@ if(mode==='project')await client('completion-project',async c=>{
  }finally{fs.renameSync(hidden,module);}
  c.drain();c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:db}}));assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(helper))).params.diagnostics,[]);
  const text=fs.readFileSync(helper,'utf8');assert.equal((await complete(c,helper,position(text,'answer()'))).error,undefined,'COMPLETION_RESTORED_CJO');
+ await finish(c);
+},0);
+
+if(mode==='accessibility')await client('completion-accessibility',async c=>{
+ const db=project+'/compile_commands.json',leaf=project+'/leaf/src/lib.cj',helper=project+'/helper/src/lib.cj';
+ fs.writeFileSync(directory+'/prior-leaf.cj',fs.readFileSync(leaf));fs.writeFileSync(directory+'/prior-helper.cj',fs.readFileSync(helper));
+ fs.appendFileSync(leaf,'\npublic open class Guard { public let value: Int64 = 42; protected let secret: Int64 = 7; private let privateValue: Int64 = 9; let packageValue: Int64 = 8; public init() {} }\n');
+ const base='package completion_helper\nimport completion_leaf.*\npublic func forwarded(): Int64 { 42 }\n';fs.writeFileSync(helper,base);buildProject('accessibility-input');
+ await init(c,{initializationOptions:{compilationDatabase:db}});let version=1;assert.deepEqual(await open(c,helper,base,version),[]);
+ for(const name of ['secret','privateValue','packageValue']){
+  const completeText=base+'func inspect(item: Guard): Int64 { item.'+name+' }\n';
+  const rejected=await change(c,helper,completeText,++version);assert(rejected.some(x=>x.severity===1),'ACTUAL_SEMA_ACCESS_REJECTION '+name);fs.writeFileSync(directory+'/'+name+'-actual-diagnostics.json',JSON.stringify(rejected,null,2));
+  const input=marked(base+'func inspect(item: Guard): Int64 { item.'+name.slice(0,2)+'| }\n');await change(c,helper,input.text,++version);
+  const result=await complete(c,helper,input.point);assert.equal(result.error,undefined,'COMPLETION_ACCESS_CONTEXT '+JSON.stringify(result));assert.deepEqual(result.result.items,[],'COMPLETION_ACCESS_FILTER '+name);
+ }
+ const input=marked(base+'func inspect(item: Guard): Int64 { item.va| }\n');await change(c,helper,input.text,++version);const normal=await complete(c,helper,input.point);assert.equal(normal.error,undefined);const item=normal.result.items.find(x=>x.label==='value');assert.equal(item?.detail,'value: Int64');assert.deepEqual(await change(c,helper,apply(input.text,item),++version),[]);
  await finish(c);
 },0);
