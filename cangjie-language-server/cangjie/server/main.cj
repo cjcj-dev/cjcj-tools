@@ -297,7 +297,9 @@ class Server {
         }
         if (method == "textDocument/definition" || method == "textDocument/references" ||
             method == "textDocument/documentHighlight") {
-            let path = filePath(string(field(params, "textDocument"), "uri")); let semantic = match (semantics.get(path)) { case Some(value) => value; case None => response(id.getOrThrow(), JsonNull()); return }
+            let path = filePath(string(field(params, "textDocument"), "uri")); let semantic = match (semantics.get(path)) { case Some(value) => value; case None =>
+                if (compilationDatabase.isEmpty()) { throw IllegalArgumentException("Document has no semantic snapshot") }
+                response(id.getOrThrow(), JsonNull()); return }
             if (!semantic.succeeded) { response(id.getOrThrow(), JsonNull()); return }
             let pos = position(field(params, "position"))
             if (method == "textDocument/documentHighlight") {

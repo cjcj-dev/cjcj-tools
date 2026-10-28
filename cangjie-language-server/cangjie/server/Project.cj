@@ -64,5 +64,7 @@ class ProjectGraph {
             if (files.contains(file)) { throw IllegalArgumentException("Ambiguous compilation database entry: " + file) }
             command.files.add(file); files[file] = command
         }
+        // Validate all argument paths before publishing any semantic index.
+        for (command in commands.values()) { let _ = command.semanticArguments() }
     }
 }
