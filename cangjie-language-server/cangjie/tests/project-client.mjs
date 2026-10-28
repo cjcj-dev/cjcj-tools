@@ -29,7 +29,7 @@ async function client(label,body,expected,selectedSdk=sdk){
  finally{clearTimeout(timeout);fs.writeFileSync(directory+'/'+label+'-transcript.json',JSON.stringify(transcript,null,2));fs.writeFileSync(directory+'/client-results.json',JSON.stringify(cases,null,2));}
  if(failure)throw failure;
 }
-const database=project+'/compile_commands.json';
+const database=process.argv[7]??project+'/compile_commands.json';
 const request=(id,method,params={})=>({jsonrpc:'2.0',id,method,params}),note=(method,params={})=>({jsonrpc:'2.0',method,params});
 const uri=p=>pathToFileURL(p).href,read=p=>fs.readFileSync(p,'utf8'),app=project+'/app/source-code/value.cj',helper=project+'/helper/source-code/value.cj',leaf=project+'/leaf/source-code/value.cj',control=project+'/control/source-code/value.cj';
 const pos=(s,needle)=>{const at=s.indexOf(needle);assert(at>=0);const lines=s.slice(0,at).split('\n');return {line:lines.length-1,character:lines.at(-1).length};};
@@ -38,8 +38,8 @@ await client('project-stdio',async c=>{
  async function open(p,version=1,text=read(p)){c.send(note('textDocument/didOpen',{textDocument:{uri:uri(p),version,languageId:'cangjie',text}}));return (await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(p)&&x.params.version===version)).params.diagnostics;}
  async function change(p,version,text){c.send(note('textDocument/didChange',{textDocument:{uri:uri(p),version},contentChanges:[{text}]}));return (await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(p)&&x.params.version===version)).params.diagnostics;}
  async function query(id,method,p,needle){c.send(request(id,'textDocument/'+method,{textDocument:{uri:uri(p)},position:pos(read(p),needle),context:{includeDeclaration:false}}));const r=await c.take(x=>x.id===id);assert.equal(r.error,undefined);return r.result;}
- assert.deepEqual(await open(app),[],'PROJECT_IMPORT_TARGET');
- if(mode!=='project-config'&&mode!=='project-control'){
+ if(mode!=='project-control')assert.deepEqual(await open(app),[],'PROJECT_IMPORT_TARGET');
+ if(mode!=='project-config'&&mode!=='project-control'&&mode!=='project-target'){
  const d=await query('direct','definition',app,'forwarded()');assert(d,'PROJECT_SOURCE_DEFINITION');assert.equal(d.uri,uri(helper));
  assert.deepEqual(await open(helper),[]);const trans=await query('transitive','definition',helper,'diskAnswer()');assert.equal(trans.uri,uri(leaf));
  assert.deepEqual(await open(leaf),[]);const refs=await query('refs','references',leaf,'diskAnswer()');assert.equal(refs.length,1);assert.equal(refs[0].uri,uri(helper));
@@ -52,7 +52,7 @@ await client('project-stdio',async c=>{
  }
  if(mode==='project-control'){
   assert.deepEqual(await open(control),[],'PROJECT_INDEPENDENT_CONTROL');
- }else{
+ }else if(mode!=='project-target'){
  c.send(request('barrier','textDocument/definition',{textDocument:{uri:uri(app)},position:pos(read(app),'forwarded()')}));await c.take(x=>x.id==='barrier');c.drain();
  c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:database+'.missing'}}));const missing=await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(app));assert(missing.params.diagnostics.some(d=>d.severity===1));assert.equal(await query('missing-graph','definition',app,'forwarded()'),null);
  c.drain();c.send(note('workspace/didChangeConfiguration',{settings:{compilationDatabase:database}}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(app)&&x.params.diagnostics.length===0);assert.equal((await query('config-restored','definition',app,'forwarded()')).uri,uri(helper));
