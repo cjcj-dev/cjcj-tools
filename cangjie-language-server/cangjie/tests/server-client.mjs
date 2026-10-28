@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
-const [exe,sdk,directory,mode]=process.argv.slice(2);fs.mkdirSync(directory,{recursive:true});
+const [exe,sdk,directory,requestedMode]=process.argv.slice(2);
+const hostEnvironmentControl=requestedMode==='analysis-host';
+const mode=hostEnvironmentControl?'analysis':requestedMode;fs.mkdirSync(directory,{recursive:true});
 const cases=[];
 const encode=value=>{const body=typeof value==='string'?value:JSON.stringify(value);return Buffer.concat([Buffer.from(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n`),Buffer.from(body)]);};
 async function client(label,body,expected,selectedSdk=sdk){
@@ -14,7 +16,8 @@ async function client(label,body,expected,selectedSdk=sdk){
  if(mode==='workspace'&&label!=='workspace-unopened-siblings')return;
  if(mode==='control'&&label!=='independent-shutdown')return;
  if(mode==='target'&&label!=='lifecycle-semantics')return;
- const env={...process.env};for(const key of ['LD_LIBRARY_PATH','LD_PRELOAD','LD_AUDIT','CANGJIE_HOME','CANGJIE_PATH'])delete env[key];
+ const env={...process.env};for(const key of ['LD_LIBRARY_PATH','LD_PRELOAD','LD_AUDIT','CANGJIE_HOME','CANGJIE_PATH']){if(key!=='CANGJIE_HOME'||!hostEnvironmentControl)delete env[key];}
+ if(hostEnvironmentControl)assert(env.CANGJIE_HOME&&env.CANGJIE_HOME!==selectedSdk,'distinct real host home control');
  const started=new Date().toISOString(),p=spawn(exe,['--sdk',selectedSdk],{env,stdio:['pipe','pipe','pipe']});let data=Buffer.alloc(0),stderr='',ended=false;const transcript=[];const queue=[],waiters=[];
  const closed=new Promise(resolve=>{p.on('error',error=>resolve({error:String(error)}));p.on('close',(rc,signal)=>{ended=true;resolve({rc,signal})});});
  p.stderr.on('data',b=>stderr+=b);p.stdout.on('data',chunk=>{transcript.push({direction:'receive-bytes',base64:chunk.toString('base64')});data=Buffer.concat([data,chunk]);for(;;){const boundary=data.indexOf('\r\n\r\n');if(boundary<0)break;const header=data.subarray(0,boundary).toString();const match=/^Content-Length: (\d+)$/m.exec(header);assert(match,'stdout is framed JSON-RPC, no compiler chatter');const size=Number(match[1]);if(data.length<boundary+4+size)break;const value=JSON.parse(data.subarray(boundary+4,boundary+4+size));data=data.subarray(boundary+4+size);transcript.push({direction:"receive",value});queue.push(value);for(const wake of waiters.splice(0))wake();}});
@@ -222,6 +225,7 @@ if(mode==='analysis') {
   if(!missing&&!noModules)assert.match(result.stderr,/LSP_ANALYSIS .*succeeded=true errors=0/);
  }
  await analysis('analysis-type',{typeCheck:true});
+ if(!hostEnvironmentControl) {
  const cjo=path.join(sdk,'modules/linux_x86_64_cjnative/lsp_leaf.cjo');
  assert(!fs.existsSync(cjo+'.analysis-held'));fs.renameSync(cjo,cjo+'.analysis-held');
  try {await analysis('analysis-missing',{missing:true});} finally {fs.renameSync(cjo+'.analysis-held',cjo);}
@@ -229,6 +233,7 @@ if(mode==='analysis') {
  const incomplete=path.join(directory,'no-modules');fs.mkdirSync(incomplete);fs.mkdirSync(incomplete+'/bin');
  fs.symlinkSync(fs.realpathSync(path.join(sdk,'bin/cjc')),incomplete+'/bin/cjc');
  await analysis('analysis-no-modules',{selected:incomplete,noModules:true});
+ }
 }
 
 console.log('LSP_SERVER_CLIENT_PASS processes='+cases.length+' mode='+(mode??'all'));
