@@ -40,7 +40,7 @@ public class CompletionSpan {
         first = start; last = end
         prefix = if (chosen) { text[start..offset] } else { "" }
     }
-    private func byteOffset(text: String, line: Int64, column: Int64): Int64 {
+    private static func byteOffset(text: String, line: Int64, column: Int64): Int64 {
         var row: Int64 = 1; var offset: Int64 = 0
         let bytes = text.toArray()
         while (row < line && offset < bytes.size) { if (bytes[offset] == 10) { row++ }; offset++ }
