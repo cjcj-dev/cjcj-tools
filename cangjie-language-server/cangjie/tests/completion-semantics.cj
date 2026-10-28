@@ -68,7 +68,11 @@ main(args: Array<String>): Int64 {
                                 for (name in ["shadow", "parameter", "later", "box", "noSuchName"]) {
                                     let probe = RefExpr(SrcIdentifier(name, ref.begin, ref.end, false))
                                     CopyNodeScopeInfo(probe, ref)
-                                    if (mode == "context" && probe.GetTy().isSome()) { throw Exception("CONTEXT_PROBE_ALREADY_TYPED") }
+                                    if (mode == "context") {
+                                        if (let Some(ty) <- probe.GetTy()) {
+                                            if (Ty.IsTyCorrect(ty)) { throw Exception("CONTEXT_PROBE_ALREADY_TYPED") }
+                                        }
+                                    }
                                     let found = document.compiler.GetGivenReferenceTarget(ctx, ref.scopeName, probe, true)
                                     show(found, name)
                                     if (mode == "context") {
