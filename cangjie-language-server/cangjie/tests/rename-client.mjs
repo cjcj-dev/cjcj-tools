@@ -24,6 +24,13 @@ async function client(label,body,expected,selectedSdk=sdk){
 const request=(id,method,params={})=>({jsonrpc:'2.0',id,method,params}),note=(method,params={})=>({jsonrpc:'2.0',method,params});
 const uri=p=>pathToFileURL(p).href;
 const position=(text,needle,n=0)=>{let i=-1;for(let k=0;k<=n;k++){i=text.indexOf(needle,i+1);assert(i>=0,needle);}const lines=text.slice(0,i).split('\n');return {line:lines.length-1,character:lines.at(-1).length};};
+function buildProject(label){
+ const recipe=JSON.parse(fs.readFileSync(path.join(project,'../project-build-recipe.json'),'utf8'));
+ const started=new Date().toISOString(),r=spawnSync(recipe.argv[0],recipe.argv.slice(1),{cwd:project,env:recipe.env,encoding:'utf8',timeout:180000});
+ fs.writeFileSync(directory+'/'+label+'.json',JSON.stringify({...recipe,started,ended:new Date().toISOString(),rc:r.status,signal:r.signal,error:r.error?.message??null},null,2));fs.writeFileSync(directory+'/'+label+'.stdout',r.stdout??'');fs.writeFileSync(directory+'/'+label+'.stderr',r.stderr??'');assert.equal(r.status,0,label+' '+r.stderr);
+ const exe=project+'/target/release/rename_app/main';const env={...recipe.env,LD_LIBRARY_PATH:recipe.env.CANGJIE_HOME+'/runtime/lib/linux_x86_64_cjnative:'+recipe.env.CANGJIE_HOME+'/lib/linux_x86_64_cjnative'};
+ const run=spawnSync(exe,[],{cwd:project,env,encoding:'utf8',timeout:30000});fs.writeFileSync(directory+'/'+label+'-run.json',JSON.stringify({argv:[exe],cwd:project,env,rc:run.status,signal:run.signal,error:run.error?.message??null,stdout:run.stdout,stderr:run.stderr},null,2));assert.equal(run.status,0,label+' actual program '+run.error+' '+run.stderr);
+}
 async function finish(c){c.send(request('stop','shutdown'));assert.equal((await c.take(x=>x.id==='stop')).result,null);c.send(note('exit'));c.end();}
 async function init(c,opts={}){c.send(request('init','initialize',{...opts,capabilities:{workspace:{workspaceEdit:{documentChanges:true}}}}));const r=await c.take(x=>x.id==='init');assert.equal(r.result.capabilities.renameProvider.prepareProvider,true);c.send(note('initialized'));}
 async function open(c,p,text,version=1){c.send(note('textDocument/didOpen',{textDocument:{uri:uri(p),languageId:'cangjie',version,text}}));return (await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(p)&&x.params.version===version)).params.diagnostics;}
@@ -69,7 +76,7 @@ if(mode!=='project')await client(mode==='target'?'capture-target':mode==='contro
 },0);
 if(mode==='project'||mode==='all')await client('rename-project',async c=>{
  const db=project+'/compile_commands.json',leaf=project+'/leaf/src/lib.cj',helper=project+'/helper/src/lib.cj',app=project+'/app/src/main.cj';const files=new Map([leaf,helper,app].map(p=>[p,fs.readFileSync(p,'utf8')]));
- await init(c,{initializationOptions:{compilationDatabase:db}});assert.deepEqual(await open(c,helper,files.get(helper)),[]);const r=await query(c,helper,files.get(helper),'answer()','rename','renamedAnswer');assert.equal(r.error,undefined,JSON.stringify(r));assert.equal(r.result.documentChanges.length,2);const updated=apply(r.result,files,new Map([[helper,1]]));assert(updated.get(leaf).includes('func renamedAnswer'));assert(updated.get(helper).includes('renamedAnswer()'));for(const [p,text]of updated){fs.writeFileSync(p,text);files.set(p,text);}assert.deepEqual(await change(c,helper,files.get(helper),2),[],'APPLIED_SOURCE_GRAPH_REANALYSIS');
+ await init(c,{initializationOptions:{compilationDatabase:db}});assert.deepEqual(await open(c,helper,files.get(helper)),[]);const r=await query(c,helper,files.get(helper),'answer()','rename','renamedAnswer');assert.equal(r.error,undefined,JSON.stringify(r));assert.equal(r.result.documentChanges.length,2);const updated=apply(r.result,files,new Map([[helper,1]]));assert(updated.get(leaf).includes('func renamedAnswer'));assert(updated.get(helper).includes('renamedAnswer()'));for(const [p,text]of updated){fs.writeFileSync(p,text);files.set(p,text);}buildProject("applied-rename");assert.deepEqual(await change(c,helper,files.get(helper),2),[],'APPLIED_SOURCE_GRAPH_REANALYSIS');
  // The live server uses disk CJO until the normal build refresh. Candidate
  // validation above used the newly exported CJO, not those original artifacts.
  await finish(c);
