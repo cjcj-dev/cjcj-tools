@@ -46,7 +46,7 @@ func result(): Int64 {
     return victim
 }
 `;
-if(!['project','members','workspace'].includes(mode))await client(mode==='target'?'capture-target':mode==='control'?'rename-control':'rename-local',async c=>{
+if(!['project','members','workspace','capability'].includes(mode))await client(mode==='target'?'capture-target':mode==='control'?'rename-control':'rename-local',async c=>{
  const p=path.join(directory,'use.cj');fs.writeFileSync(p,capture);await init(c);assert.deepEqual(await open(c,p,capture),[],'VALID_CAPTURE_INPUT');
  if(mode==='target'||mode==='all'){
   const r=await query(c,p,capture,'victim:','rename','occupied');assert.equal(r.result,undefined,'RENAME_CAPTURE_TARGET');assert.match(r.error?.message??'',/reference binding/,'RENAME_CAPTURE_TARGET');console.log('RENAME_CAPTURE_REJECTED');
@@ -72,6 +72,11 @@ if(!['project','members','workspace'].includes(mode))await client(mode==='target
  const duplicate=capture.replace('let victim: Int64 = 4','let victim: Int64 = 4\n    let duplicate: Int64 = 2');assert.deepEqual(await change(c,p,duplicate,++version),[]);assert((await query(c,p,duplicate,'victim:','rename','duplicate')).error,'DUPLICATE_DECL_REJECT');
  const broken=capture.replace('= 4','= true');assert((await change(c,p,broken,++version)).some(d=>d.severity===1));assert((await query(c,p,broken,'victim:','prepareRename')).error,'ERROR_SNAPSHOT_REJECT');
  assert.deepEqual(await change(c,p,capture,++version),[]);const last=version;c.send(note('textDocument/didChange',{textDocument:{uri:uri(p),version:last},contentChanges:[{text:broken}]}));const good=await query(c,p,capture,'victim:','rename','latest');assert.equal(good.error,undefined);assert.equal(good.result.documentChanges[0].textDocument.version,last,'STALE_NOTIFICATION_MUST_NOT_REPLACE_SNAPSHOT');
+ await finish(c);
+},0);
+if(mode==='capability')await client('rename-capability',async c=>{
+ const p=path.join(directory,'use.cj');fs.writeFileSync(p,capture);c.send(request('init','initialize',{capabilities:{}}));assert((await c.take(x=>x.id==='init')).result);c.send(note('initialized'));assert.deepEqual(await open(c,p,capture),[]);
+ for(const method of ['prepareRename','rename']){const r=await query(c,p,capture,'victim:',method,'fresh');assert.match(r.error?.message??'',/versioned documentChanges/);assert.equal(r.result,undefined);}
  await finish(c);
 },0);
 if(mode==='workspace')await client('rename-workspace',async c=>{
