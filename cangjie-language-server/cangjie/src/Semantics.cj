@@ -2,7 +2,8 @@ package cangjie_lsp_core
 
 import std.collection.*
 import cangjie_lsp_protocol.*
-import cjcj::ast.{Node, Decl, RefExpr, MemberAccess, Identifier, Walker, VisitAction}
+import cjcj::ast.{Node, Decl, RefExpr, MemberAccess, Identifier, Walker, VisitAction, Attribute}
+import cjcj::mangle.BaseMangler
 import cjcj::basic.DiagnosticEngine as BasicDiagnosticEngine
 import cjcj::basic.{Diagnostic, DiagnosticHandler, DiagHandlerKind, DiagSeverity}
 import cjcj::frontend.{CompilerInvocation, CompilerInstance, CompileStage, DiagnosticEngine, SrcCodeCacheInfo}
@@ -50,13 +51,16 @@ public class SemanticDocument {
     public let records: ArrayList<Diagnostic>
     private let occurrences = ArrayList<BoundOccurrence>()
 
-    public init(snapshot: DocumentSnapshot, targetSdk: String, importPaths!: Array<String> = [], companions!: Array<DocumentSnapshot> = []) {
+    public init(snapshot: DocumentSnapshot, targetSdk: String, importPaths!: Array<String> = [], companions!: Array<DocumentSnapshot> = [], compilerArguments!: Array<String> = []) {
         this.snapshot = snapshot
         let invocation = CompilerInvocation()
-        let args = ArrayList<String>([targetSdk + "/bin/cjc", "--output-type=staticlib"])
-        for (directory in importPaths) { args.add("--import-path=" + directory) }
-        args.add(snapshot.uri)
-        for (peer in companions) { if (peer.uri != snapshot.uri) { args.add(peer.uri) } }
+        let args = ArrayList<String>(compilerArguments)
+        if (args.isEmpty()) {
+            args.add(targetSdk + "/bin/cjc"); args.add("--output-type=staticlib")
+            for (directory in importPaths) { args.add("--import-path=" + directory) }
+            args.add(snapshot.uri)
+            for (peer in companions) { if (peer.uri != snapshot.uri) { args.add(peer.uri) } }
+        }
         if (!invocation.ParseArgs(args)) { throw IllegalArgumentException("Invalid frontend arguments") }
         invocation.globalOptions.executablePath = targetSdk + "/bin/cjc"
         // --sdk selects the analysis modules independently of the host process
@@ -73,6 +77,7 @@ public class SemanticDocument {
         succeeded = compiler.Compile(stage: CompileStage.SEMA) && diagnostics.GetErrorCount() == 0
         if (succeeded) {
             for (sourcePackage in compiler.GetSourcePackages()) {
+                if (!compilerArguments.isEmpty()) { BaseMangler().MangleExportIds(sourcePackage) }
                 for (file in sourcePackage.files) {
                     Walker(file, visitPre: Some({ node: Node => collect(node) }), walkExprDesugar: false).Walk()
                 }
@@ -121,6 +126,26 @@ public class SemanticDocument {
                 position.character < found.end.character) { return Some(occurrence.declaration) }
         }
         return None
+    }
+
+    // The CJO writer and reader use this same frontend export identity. Local
+    // declarations retain instance identity; they never match by spelling.
+    private func exportedKey(declaration: Decl): String {
+        if (!declaration.TestAttr(Attribute.GLOBAL) || declaration.exportId.isEmpty() || declaration.fullPackageName.isEmpty()) { return "" }
+        return declaration.fullPackageName + "|" + declaration.exportId
+    }
+    public func ExportedTarget(position: ProtocolPosition): String {
+        if (let Some(declaration) <- target(position)) { return exportedKey(declaration) }
+        return ""
+    }
+    public func ExportedOccurrences(key: String, declarationsOnly!: Bool = false, includeDeclaration!: Bool = false): Array<SemanticLocation> {
+        let result = ArrayList<SemanticLocation>()
+        if (key.isEmpty()) { return result.toArray() }
+        for (item in occurrences) {
+            if (exportedKey(item.declaration) == key &&
+                (if (declarationsOnly) { item.isDeclaration } else { includeDeclaration || !item.isDeclaration })) { result.add(item.location) }
+        }
+        return result.toArray()
     }
 
     public func Definition(position: ProtocolPosition): Option<SemanticLocation> {

@@ -90,6 +90,7 @@ class Server {
     let documents = DocumentStore()
     let semantics = HashMap<String, SemanticDocument>()
     let workspaceRoots = HashSet<String>()
+    var compilationDatabase = ""
     var initialized = false
     var stopped = false
     var exiting = false
@@ -112,16 +113,47 @@ class Server {
         for (root in workspaceRoots) { if (actual.startsWith(root)) { return true } }
         return false
     }
+    func projectDiagnostic(message: String): JsonValue {
+        return object([("range", rangeJson(ProtocolPosition(0, 0), ProtocolPosition(0, 0))), ("severity", JsonInt(1)),
+            ("source", JsonString("cangjie")), ("message", JsonString(message))])
+    }
+    func configure(value: JsonValue): Unit {
+        if (let Some(database) <- value.asObject().get("compilationDatabase")) { compilationDatabase = database.asString().getValue() }
+    }
+    func projectLocations(key: String, declarationsOnly!: Bool = false, includeDeclaration!: Bool = false): Array<SemanticLocation> {
+        let result = ArrayList<SemanticLocation>(); let seen = HashSet<String>()
+        for (semantic in semantics.values() where semantic.succeeded) {
+            for (found in semantic.ExportedOccurrences(key, declarationsOnly: declarationsOnly, includeDeclaration: includeDeclaration)) {
+                let identity = found.path + ":" + found.start.line.toString() + ":" + found.start.character.toString()
+                if (seen.add(identity)) { result.add(found) }
+            }
+        }
+        return result.toArray()
+    }
     func analyze(): Unit {
         semantics.clear()
         let opened = documents.Snapshots()
         let sources = HashMap<String, DocumentSnapshot>()
         let openVersions = HashMap<String, Int64>()
+        var project: Option<ProjectGraph> = None
+        if (!compilationDatabase.isEmpty()) {
+            try { project = Some(ProjectGraph(compilationDatabase)) }
+            catch (exception: Exception) {
+                Console.stdErr.writeln("LSP_PROJECT_ERROR " + exception.message)
+                for (snapshot in opened) { publish(snapshot.uri, snapshot.version, [projectDiagnostic(exception.message)]) }
+                return
+            }
+        }
         // The compiler's source package consists of ordinary sibling .cj
         // files. Open buffers override disk, never the other way round.
         // Imported package/build configuration remains a separate project edge.
+        if (let Some(graph) <- project) {
+            for (path in graph.files.keys()) {
+                sources[path] = DocumentSnapshot(path, 0, String.fromUtf8(File.readFrom(path)))
+            }
+        }
         for (snapshot in opened) {
-            if (inWorkspace(snapshot.uri)) {
+            if (project.isNone() && inWorkspace(snapshot.uri)) {
                 for (entry in Directory.readFrom(parent(snapshot.uri))) {
                     if (entry.isRegular() && entry.name.endsWith(".cj") && !entry.name.endsWith("_test.cj")) {
                         // parent already ends in a separator. FileInfo may retain
@@ -133,12 +165,29 @@ class Server {
                 }
             }
         }
-        for (snapshot in opened) { sources[snapshot.uri] = snapshot; openVersions[snapshot.uri] = snapshot.version }
+        for (snapshot in opened) {
+            if (let Some(graph) <- project) {
+                if (!graph.files.contains(snapshot.uri)) { publish(snapshot.uri, snapshot.version, [projectDiagnostic("Document is outside the selected compilation database")]); continue }
+            }
+            sources[snapshot.uri] = snapshot; openVersions[snapshot.uri] = snapshot.version
+        }
         let snapshots = sources.values().toArray()
         for (snapshot in snapshots) {
             let peers = ArrayList<DocumentSnapshot>()
-            for (peer in snapshots) { if (parent(peer.uri) == parent(snapshot.uri)) { peers.add(peer) } }
-            let semantic = SemanticDocument(snapshot, sdk, companions: peers.toArray())
+            var arguments: Array<String> = []
+            if (let Some(graph) <- project) {
+                let command = graph.files[snapshot.uri]
+                arguments = command.semanticArguments()
+                for (peer in snapshots) { if (command.files.contains(peer.uri)) { peers.add(peer) } }
+            } else {
+                for (peer in snapshots) { if (parent(peer.uri) == parent(snapshot.uri)) { peers.add(peer) } }
+            }
+            let semantic = try { SemanticDocument(snapshot, sdk, companions: peers.toArray(), compilerArguments: arguments) }
+                catch (exception: Exception) {
+                    Console.stdErr.writeln("LSP_PROJECT_ANALYSIS_ERROR " + exception.message)
+                    if (let Some(version) <- openVersions.get(snapshot.uri)) { publish(snapshot.uri, version, [projectDiagnostic(exception.message)]) }
+                    continue
+                }
             semantics[snapshot.uri] = semantic
             let items = ArrayList<JsonValue>()
             var hasError = false
@@ -208,6 +257,9 @@ class Server {
                     }
                 }
             }
+            if (let Some(params) <- request.get("params")) {
+                if (let Some(options) <- params.asObject().get("initializationOptions")) { configure(options) }
+            }
             initialized = true
             response(key, object([("capabilities", object([("positionEncoding", JsonString("utf-16")),
                 ("textDocumentSync", object([("openClose", JsonBool(true)), ("change", JsonInt(2))])),
@@ -220,6 +272,7 @@ class Server {
         if (method == "shutdown") { response(id.getOrThrow(), JsonNull()); stopped = true; return }
         if (method == "initialized" || method == "$/cancelRequest") { return }
         let params = request.get("params").getOrDefault({ => JsonObject() })
+        if (method == "workspace/didChangeConfiguration") { configure(field(params, "settings")); analyze(); return }
         if (method == "workspace/didChangeWatchedFiles") {
             // Re-read unopened siblings after the client's real file event;
             // the immutable open overlays still win during analysis.
@@ -244,7 +297,7 @@ class Server {
         }
         if (method == "textDocument/definition" || method == "textDocument/references" ||
             method == "textDocument/documentHighlight") {
-            let path = filePath(string(field(params, "textDocument"), "uri")); let semantic = semantics.get(path).getOrThrow()
+            let path = filePath(string(field(params, "textDocument"), "uri")); let semantic = match (semantics.get(path)) { case Some(value) => value; case None => response(id.getOrThrow(), JsonNull()); return }
             if (!semantic.succeeded) { response(id.getOrThrow(), JsonNull()); return }
             let pos = position(field(params, "position"))
             if (method == "textDocument/documentHighlight") {
@@ -258,12 +311,19 @@ class Server {
                 }
                 response(id.getOrThrow(), JsonArray(highlights))
             } else if (method == "textDocument/definition") {
-                if (let Some(found) <- semantic.Definition(pos)) { response(id.getOrThrow(), locationJson(found)) }
+                let key = semantic.ExportedTarget(pos)
+                if (!compilationDatabase.isEmpty() && !key.isEmpty()) {
+                    let found = projectLocations(key, declarationsOnly: true)
+                    response(id.getOrThrow(), if (found.size == 1) { locationJson(found[0]) } else { JsonNull() })
+                } else if (let Some(found) <- semantic.Definition(pos)) { response(id.getOrThrow(), locationJson(found)) }
                 else { response(id.getOrThrow(), JsonNull()) }
             } else {
                 let include = field(field(params, "context"), "includeDeclaration").asBool().getValue()
                 let results = ArrayList<JsonValue>()
-                for (found in semantic.References(pos, includeDeclaration: include)) { results.add(locationJson(found)) }
+                let key = semantic.ExportedTarget(pos)
+                let found = if (!compilationDatabase.isEmpty() && !key.isEmpty()) { projectLocations(key, includeDeclaration: include) }
+                    else { semantic.References(pos, includeDeclaration: include) }
+                for (location in found) { results.add(locationJson(location)) }
                 response(id.getOrThrow(), JsonArray(results))
             }
             return
