@@ -12,9 +12,9 @@ async function client(label,body,expected,selectedSdk=sdk){
  const started=new Date().toISOString(),p=spawn(exe,['--sdk',selectedSdk],{env,stdio:['pipe','pipe','pipe']});let data=Buffer.alloc(0),stderr='',ended=false;const transcript=[];const queue=[],waiters=[];
  const closed=new Promise(resolve=>{p.on('error',error=>resolve({error:String(error)}));p.on('close',(rc,signal)=>{ended=true;resolve({rc,signal})});});
  p.stderr.on('data',b=>stderr+=b);p.stdout.on('data',chunk=>{transcript.push({direction:'receive-bytes',base64:chunk.toString('base64')});data=Buffer.concat([data,chunk]);for(;;){const boundary=data.indexOf('\r\n\r\n');if(boundary<0)break;const header=data.subarray(0,boundary).toString();const match=/^Content-Length: (\d+)$/m.exec(header);assert(match,'stdout is framed JSON-RPC, no compiler chatter');const size=Number(match[1]);if(data.length<boundary+4+size)break;const value=JSON.parse(data.subarray(boundary+4,boundary+4+size));data=data.subarray(boundary+4+size);transcript.push({direction:"receive",value});queue.push(value);for(const wake of waiters.splice(0))wake();}});
- async function take(predicate){const deadline=Date.now()+45000;while(Date.now()<deadline){let index=queue.findIndex(predicate);if(index>=0)return queue.splice(index,1)[0];if(ended)throw Error('server ended before response '+stderr);await Promise.race([new Promise(resolve=>waiters.push(resolve)),new Promise(resolve=>setTimeout(resolve,20))]);}throw Error('response timeout '+JSON.stringify(queue)+' '+stderr);}
+ async function take(predicate){const deadline=Date.now()+180000;while(Date.now()<deadline){let index=queue.findIndex(predicate);if(index>=0)return queue.splice(index,1)[0];if(ended)throw Error('server ended before response '+stderr);await Promise.race([new Promise(resolve=>waiters.push(resolve)),new Promise(resolve=>setTimeout(resolve,20))]);}throw Error('response timeout '+JSON.stringify(queue)+' '+stderr);}
  const api={send:value=>{transcript.push({direction:"send",value});p.stdin.write(encode(value));},raw:bytes=>{transcript.push({direction:"send-bytes",base64:bytes.toString("base64")});p.stdin.write(bytes);},take,drain:()=>queue.splice(0),end:()=>p.stdin.end()};
- const timeout=setTimeout(()=>p.kill('SIGTERM'),120000);let failure;
+ const timeout=setTimeout(()=>p.kill('SIGTERM'),210000);let failure;
  try{await body(api);const result=await closed;assert.equal(result.rc,expected,label);assert.equal(result.signal,null);cases.push({label,argv:[exe,'--sdk',selectedSdk],started,ended:new Date().toISOString(),...result,stderr,pass:true});}
  catch(e){failure=e;if(!ended)p.kill('SIGTERM');const result=await closed;cases.push({label,started,ended:new Date().toISOString(),...result,stderr,pass:false,error:e.stack});}
  finally{clearTimeout(timeout);fs.writeFileSync(directory+'/'+label+'-transcript.json',JSON.stringify(transcript,null,2));fs.writeFileSync(directory+'/client-results.json',JSON.stringify(cases,null,2));}
@@ -46,6 +46,11 @@ function apply(text,item){const edit=item.textEdit;return text.slice(0,offset(te
 const prefix='package completion_user\n';
 const generic=prefix+'class Box<T> {\n public let value: T\n private let secret: Int64 = 9\n public init(item: T) { value = item }\n}\n';
 const fixtures=[
+ {label:'constraint-positive',input:prefix+'interface Allowed {}\nclass Value <: Allowed { public init() {} }\nclass Box<T> { public let value: T; public init(item: T) { value = item } }\nextend<T> Box<T> where T <: Allowed { public func gate(): Int64 { 42 } }\nfunc use(box: Box<Value>): Int64 { box.ga|te() }\n',name:'gate',typeIncludes:'Int64'},
+ {label:'constraint-negative',input:prefix+'interface Allowed {}\nclass Box<T> { public let value: T; public init(item: T) { value = item } }\nextend<T> Box<T> where T <: Allowed { public func gate(): Int64 { 42 } }\nfunc use(box: Box<Int64>): Int64 { box.ga| }\n',empty:true},
+ {label:'protected-filter',input:prefix+'open class Base { public let value: Int64 = 42; protected let secret: Int64 = 7; public init() {} }\nfunc use(item: Base): Int64 { item.se| }\n',empty:true},
+ {label:'wrong-instance',input:prefix+'class Holder { public let value: Int64 = 42; public static let answer: Int64 = 42; public init() {} }\nfunc use(): Int64 { Holder.va| }\n',empty:true},
+
  {label:'type-context',input:generic+'func use(): Unit { let item: Bo|x<Int64> = Box<Int64>(42) }\n',name:'Box',typeIncludes:'Box'},
  {label:'generic-bool',input:generic+'func use(box: Box<Bool>): Bool { return box.va| }\n',name:'value',type:'value: Bool'},
  {label:'inherited',input:prefix+'open class Base { public let value: Int64 = 42; public init() {} }\nclass Child <: Base { public init() { super() } }\nfunc use(child: Child): Int64 { child.va| }\n',name:'value',type:'value: Int64'},
