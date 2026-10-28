@@ -245,7 +245,16 @@ public class SemanticDocument {
         if (let Some(owner) <- decl.outerDecl) {
             if (let Some(inherited) <- (owner as InheritableDecl)) {
                 if ((owner as InterfaceDecl).isSome()) { return false }
-                if ((decl as VarDecl).isNone() && (!inherited.inheritedTypes.isEmpty() || owner.IsOpen())) { return false }
+                if ((decl as FuncDecl).isSome()) {
+                    // SEMA inserts Object even without an explicit base. Reject
+                    // related inherited member sets, not every class method.
+                    for (base in inherited.GetAllSuperDecls()) {
+                        if (base.objectId == owner.objectId) { continue }
+                        for (member in base.GetMemberDecls()) {
+                            if (member.identifier == decl.identifier) { return false }
+                        }
+                    }
+                }
             }
         }
         return (decl as VarDecl).isSome() || (decl as FuncDecl).isSome() || (decl as StructDecl).isSome() ||

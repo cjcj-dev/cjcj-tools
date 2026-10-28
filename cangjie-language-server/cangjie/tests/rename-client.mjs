@@ -28,7 +28,7 @@ function buildProject(label){
  const recipe=JSON.parse(fs.readFileSync(path.join(project,'../project-build-recipe.json'),'utf8'));
  const started=new Date().toISOString(),r=spawnSync(recipe.argv[0],recipe.argv.slice(1),{cwd:project,env:recipe.env,encoding:'utf8',timeout:180000});
  fs.writeFileSync(directory+'/'+label+'.json',JSON.stringify({...recipe,started,ended:new Date().toISOString(),rc:r.status,signal:r.signal,error:r.error?.message??null},null,2));fs.writeFileSync(directory+'/'+label+'.stdout',r.stdout??'');fs.writeFileSync(directory+'/'+label+'.stderr',r.stderr??'');assert.equal(r.status,0,label+' '+r.stderr);
- const exe=project+'/target/release/rename_app/main';const env={...recipe.env,LD_LIBRARY_PATH:recipe.env.CANGJIE_HOME+'/runtime/lib/linux_x86_64_cjnative:'+recipe.env.CANGJIE_HOME+'/lib/linux_x86_64_cjnative'};
+ const exe=project+'/target/release/bin/rename_app';const env={...recipe.env,LD_LIBRARY_PATH:recipe.env.CANGJIE_HOME+'/runtime/lib/linux_x86_64_cjnative:'+recipe.env.CANGJIE_HOME+'/lib/linux_x86_64_cjnative'};
  const run=spawnSync(exe,[],{cwd:project,env,encoding:'utf8',timeout:30000});fs.writeFileSync(directory+'/'+label+'-run.json',JSON.stringify({argv:[exe],cwd:project,env,rc:run.status,signal:run.signal,error:run.error?.message??null,stdout:run.stdout,stderr:run.stderr},null,2));assert.equal(run.status,0,label+' actual program '+run.error+' '+run.stderr);
 }
 async function finish(c){c.send(request('stop','shutdown'));assert.equal((await c.take(x=>x.id==='stop')).result,null);c.send(note('exit'));c.end();}
@@ -46,7 +46,7 @@ func result(): Int64 {
     return victim
 }
 `;
-if(mode!=='project')await client(mode==='target'?'capture-target':mode==='control'?'rename-control':'rename-local',async c=>{
+if(mode!=='project'&&mode!=='members')await client(mode==='target'?'capture-target':mode==='control'?'rename-control':'rename-local',async c=>{
  const p=path.join(directory,'use.cj');fs.writeFileSync(p,capture);await init(c);assert.deepEqual(await open(c,p,capture),[],'VALID_CAPTURE_INPUT');
  if(mode==='target'||mode==='all'){
   const r=await query(c,p,capture,'victim:','rename','occupied');assert.equal(r.result,undefined,'RENAME_CAPTURE_TARGET');assert.match(r.error?.message??'',/reference binding/,'RENAME_CAPTURE_TARGET');console.log('RENAME_CAPTURE_REJECTED');
@@ -72,6 +72,20 @@ if(mode!=='project')await client(mode==='target'?'capture-target':mode==='contro
  const duplicate=capture.replace('let victim: Int64 = 4','let victim: Int64 = 4\n    let duplicate: Int64 = 2');assert.deepEqual(await change(c,p,duplicate,++version),[]);assert((await query(c,p,duplicate,'victim:','rename','duplicate')).error,'DUPLICATE_DECL_REJECT');
  const broken=capture.replace('= 4','= true');assert((await change(c,p,broken,++version)).some(d=>d.severity===1));assert((await query(c,p,broken,'victim:','prepareRename')).error,'ERROR_SNAPSHOT_REJECT');
  assert.deepEqual(await change(c,p,capture,++version),[]);const last=version;c.send(note('textDocument/didChange',{textDocument:{uri:uri(p),version:last},contentChanges:[{text:broken}]}));const good=await query(c,p,capture,'victim:','rename','latest');assert.equal(good.error,undefined);assert.equal(good.result.documentChanges[0].textDocument.version,last,'STALE_NOTIFICATION_MUST_NOT_REPLACE_SNAPSHOT');
+ await finish(c);
+},0);
+if(mode==='members')await client('rename-members',async c=>{
+ const p=path.join(directory,'members.cj');await init(c);let version=1;
+ const normal='package rename_members\nclass Holder { public init() {} public func answer(): Int64 { 42 } }\nfunc use(): Int64 { Holder().answer() }\n';
+ fs.writeFileSync(p,normal);assert.deepEqual(await open(c,p,normal,version),[]);
+ const edit=await query(c,p,normal,'answer():','rename','result');assert.equal(edit.error,undefined,JSON.stringify(edit));assert.equal(edit.result.documentChanges[0].edits.length,2);
+ const changed=apply(edit.result,new Map([[p,normal]]),new Map([[p,version]])).get(p);assert.deepEqual(await change(c,p,changed,++version),[],'FINAL_MEMBER_RENAMED');
+ const cases=[
+  {text:'package rename_members\nopen class Base { public init() {} public open func answer(): Int64 { 42 } }\nclass Derived <: Base { public init() { super() } public override func answer(): Int64 { 7 } }\n',at:'answer():',n:0},
+  {text:'package rename_members\nopen class Base { public init() {} public open func answer(): Int64 { 42 } }\nclass Derived <: Base { public init() { super() } public override func answer(): Int64 { 7 } }\n',at:'answer():',n:1},
+  {text:'package rename_members\ninterface Answer { func answer(): Int64 }\nclass Holder <: Answer { public init() {} public func answer(): Int64 { 42 } }\n',at:'answer():',n:1}
+ ];
+ for(const test of cases){assert.deepEqual(await change(c,p,test.text,++version),[],'VALID_RELATED_MEMBER_INPUT');const rejected=await query(c,p,test.text,test.at,'prepareRename','',test.n);assert(rejected.error,'RELATED_MEMBER_PREPARE_REJECT');assert.equal(rejected.result,undefined);}
  await finish(c);
 },0);
 if(mode==='project'||mode==='all')await client('rename-project',async c=>{
