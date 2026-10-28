@@ -76,14 +76,14 @@ if(mode!=='project'&&mode!=='members')await client(mode==='target'?'capture-targ
 },0);
 if(mode==='members')await client('rename-members',async c=>{
  const p=path.join(directory,'members.cj');await init(c);let version=1;
- const normal='package rename_members\nclass Holder { public init() {} public func answer(): Int64 { 42 } }\nfunc use(): Int64 { Holder().answer() }\n';
+ const normal='package rename_members\nclass Holder { public init() {}; public func answer(): Int64 { 42 } }\nfunc use(): Int64 { Holder().answer() }\n';
  fs.writeFileSync(p,normal);assert.deepEqual(await open(c,p,normal,version),[]);
  const edit=await query(c,p,normal,'answer():','rename','result');assert.equal(edit.error,undefined,JSON.stringify(edit));assert.equal(edit.result.documentChanges[0].edits.length,2);
  const changed=apply(edit.result,new Map([[p,normal]]),new Map([[p,version]])).get(p);assert.deepEqual(await change(c,p,changed,++version),[],'FINAL_MEMBER_RENAMED');
  const cases=[
-  {text:'package rename_members\nopen class Base { public init() {} public open func answer(): Int64 { 42 } }\nclass Derived <: Base { public init() { super() } public override func answer(): Int64 { 7 } }\n',at:'answer():',n:0},
-  {text:'package rename_members\nopen class Base { public init() {} public open func answer(): Int64 { 42 } }\nclass Derived <: Base { public init() { super() } public override func answer(): Int64 { 7 } }\n',at:'answer():',n:1},
-  {text:'package rename_members\ninterface Answer { func answer(): Int64 }\nclass Holder <: Answer { public init() {} public func answer(): Int64 { 42 } }\n',at:'answer():',n:1}
+  {text:'package rename_members\nopen class Base { public init() {}; public open func answer(): Int64 { 42 } }\nclass Derived <: Base { public init() { super() }; public override func answer(): Int64 { 7 } }\n',at:'answer():',n:0},
+  {text:'package rename_members\nopen class Base { public init() {}; public open func answer(): Int64 { 42 } }\nclass Derived <: Base { public init() { super() }; public override func answer(): Int64 { 7 } }\n',at:'answer():',n:1},
+  {text:'package rename_members\ninterface Answer { func answer(): Int64 }\nclass Holder <: Answer { public init() {}; public func answer(): Int64 { 42 } }\n',at:'answer():',n:1}
  ];
  for(const test of cases){assert.deepEqual(await change(c,p,test.text,++version),[],'VALID_RELATED_MEMBER_INPUT');const rejected=await query(c,p,test.text,test.at,'prepareRename','',test.n);assert(rejected.error,'RELATED_MEMBER_PREPARE_REJECT');assert.equal(rejected.result,undefined);}
  await finish(c);
