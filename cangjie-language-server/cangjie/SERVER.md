@@ -51,3 +51,21 @@ character, unopened siblings, buffer/disk changes and error snapshot recovery
 through stdio. Mode `highlight-control` makes an independent definition query.
 The same-directory project scope and the remaining protocol/macro obligations
 above continue to apply. New source is not dynamic qualification by itself.
+
+## Explicit CJPM projects
+
+Use the matching CJPM candidate's normal build to publish a standard arguments-based compilation database:
+
+```text
+cjpm build -i --target-dir <selected-target> --export-compile-commands /absolute/project/compile_commands.json
+```
+
+This selects normal workspace members, source directories, path/binary dependencies and target configuration. The same CompileTask argument expansion serves executed and cached tasks. The database includes every selected source compile task; scheduler-only job admission is not a semantic input. Publication happens after successful build/post-build processing. Starting a new export removes the old database, so a failed build cannot leave the previous graph available as current. The database describes the selected compilation; it is not compiler execution history.
+
+Start the server with its explicit analysis prefix, then initialize with `initializationOptions: {compilationDatabase: "/absolute/project/compile_commands.json"}`. `workspace/didChangeConfiguration` uses the same field in `settings`; watched-file notifications reread the selected database and disk sources. Empty compilationDatabase returns to the existing standalone-document mode.
+
+Project mode indexes only files listed in the selected database. Open buffers override their disk files; close restores disk contents. Paths are resolved relative to each command's directory without changing the server process working directory or host environment. Target/cfg/import arguments pass to CompilerInvocation, while explicit --sdk remains the analysis modules selection. Ambiguous multiple commands for one source are rejected: select a single target/build configuration. Shell command-only databases and source response files are not supported.
+
+Cross-package source queries use the frontend's CJO export identities and actual source declarations, not pointer equality across CompilerInstances or name matching. Binary-only dependencies return no fabricated definition location. Imported type information still comes from the selected CJO: rebuild the normal project after changing a dependency's exported API and notify the server/configuration refresh. A source overlay does not silently manufacture a new CJO. Local declarations retain their own instance identity.
+
+This is Linux host development analysis with the fixed shared frontend and matching major1 analysis prefix. It does not establish macro, complete SDK, other-platform or all-protocol qualification. P/core/leaf fixtures are deliberately not a full SDK.
