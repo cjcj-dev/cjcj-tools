@@ -145,3 +145,24 @@ if(mode==='import-statement')await client('completion-import-statement',async c=
  const applied=apply(input.text,item);assert.deepEqual(await change(c,helper,applied,++version),[]);fs.writeFileSync(helper,applied);buildProject('import-statement-applied');
  await finish(c);
 },0);
+
+if(mode==='definition-control')await client('completion-definition-control',async c=>{
+ const p=directory+'/definition.cj',text='package definition_control\nfunc use(answer: Int64): Int64 { answer }\n';fs.writeFileSync(p,text);
+ await init(c);assert.deepEqual(await open(c,p,text),[]);
+ c.send(request('definition','textDocument/definition',{textDocument:{uri:uri(p)},position:position(text,'answer',1)}));
+ const found=(await c.take(x=>x.id==='definition')).result;assert.equal(found.uri,uri(p));assert.deepEqual(found.range.start,position(text,'answer'));await finish(c);
+},0);
+if(mode==='lifecycle')await client('completion-lifecycle',async c=>{
+ const db=project+'/compile_commands.json',helper=project+'/helper/src/lib.cj',disk=fs.readFileSync(helper,'utf8');
+ const buffer='package completion_helper\npublic func forwarded(): Int64 { /* 😀 */ let answer: Bool = true; if (answer) { 42 } else { 0 } }\n';
+ await init(c,{initializationOptions:{compilationDatabase:db}});assert.deepEqual(await open(c,helper,buffer,1),[]);
+ const at=position(buffer,'answer',1);at.character+=2;
+ const checkBool=async()=>{const r=await complete(c,helper,at);assert.equal(r.error,undefined);const item=r.result.items.find(x=>x.label==='answer');assert.equal(item?.detail,'answer: Bool');return item;};
+ const item=await checkBool();assert.deepEqual(await change(c,helper,apply(buffer,item),2),[]);
+ c.send(note('textDocument/didChange',{textDocument:{uri:uri(helper),version:1},contentChanges:[{text:disk}]}));await checkBool();
+ const invalid=position(buffer,'😀');invalid.character++;assert.equal((await complete(c,helper,invalid)).error?.code,-32602,'COMPLETION_INVALID_UTF16');
+ const broken=buffer.replace('Bool = true','Bool = 42');assert((await change(c,helper,broken,3)).some(x=>x.severity===1));assert.equal((await complete(c,helper,at)).error?.code,-32602,'COMPLETION_NO_STALE_ERROR_RESULT');
+ assert.deepEqual(await change(c,helper,buffer,4),[]);await checkBool();
+ c.send(note('textDocument/didClose',{textDocument:{uri:uri(helper)}}));await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===uri(helper)&&x.params.version===4);
+ const diskPoint=position(disk,'answer()');diskPoint.character+=2;const r=await complete(c,helper,diskPoint);assert.equal(r.error,undefined,'COMPLETION_CLOSE_DISK');const restored=r.result.items.find(x=>x.label==='answer');assert(restored?.detail.includes('Int64'));assert(!restored.detail.includes('Bool'));await finish(c);
+},0);
