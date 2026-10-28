@@ -49,7 +49,7 @@ const fixtures=[
  {label:'string',input:prefix+'func use(): Unit { let text = "ans|wer" }\n',error:true},
  {label:'empty-match',input:prefix+'func use(): Int64 { let answer = 42; return zzz| }\n',empty:true},
 ];
-for(const test of fixtures){
+for(const test of fixtures.filter(test=>mode==='basic'||mode.split(',').includes(test.label))){
  await client(test.label,async c=>{
   const p=path.join(directory,test.label+'.cj'),input=marked(test.input);fs.writeFileSync(p,input.text);
   await init(c);await open(c,p,input.text);const result=await complete(c,p,input.point);
