@@ -19,12 +19,12 @@ bin/cangjie-lsp --sdk /absolute/target/sdk
 
 The current implemented protocol surface is initialize/initialized,
 shutdown/exit, incremental UTF-16 didOpen/didChange/didClose, definition,
-references, document highlights, and published frontend diagnostics. Same-directory open documents
+references, document highlights, hover, and published frontend diagnostics. Same-directory open documents
 are analyzed together using cached source buffers and declaration identity.
 Local absolute file URIs are decoded at the protocol boundary. The server
 advertises only its implemented semantic request capabilities; it does not
-claim completion, rename, workspace indexing, hover, or the entire old server
-protocol. Further protocol and project graph work remains required.
+claim completion, rename, or the entire old server protocol. The supported
+same-directory and explicit CJPM project modes are described below.
 
 `tests/server-client.mjs EXE TARGET_SDK EVIDENCE_DIRECTORY` is a real framed
 stdio client. It checks fragmented initialization, fragmented non-BMP UTF-8,
@@ -39,7 +39,7 @@ has a separately preserved failing producer/host combination and is not granted
 by nonmacro server results. These tests neither delete that obligation nor grant
 full target SDK, managed, or cross-platform LSP qualification.
 
-Workspace successor: explicit initialize.workspaceFolders/rootUri enables the normal same-directory source-package graph, including unopened .cj siblings (excluding _test.cj). Open snapshots override disk. didClose restores disk and workspace/didChangeWatchedFiles refreshes unopened sources. This does not yet implement CJPM import/build graphs, hover, completion or rename. tests/server-client.mjs mode workspace targets this new server chain; dynamic execution is pending, no prior a3e wire is relabeled.
+Workspace successor: explicit initialize.workspaceFolders/rootUri enables the normal same-directory source-package graph, including unopened .cj siblings (excluding _test.cj). Open snapshots override disk. didClose restores disk and workspace/didChangeWatchedFiles refreshes unopened sources. Use the explicit compilation database mode below for CJPM import/build graphs. tests/server-client.mjs mode workspace covers this directory mode; completion and rename remain unimplemented. Historical a3e results keep their original scope.
 
 `textDocument/documentHighlight` uses the selected snapshot's resolved declaration
 identity and returns declaration/reference ranges only in the requested file.
@@ -49,8 +49,8 @@ an empty array, and unknown documents keep the invalid-params response.
 `server-client.mjs ... highlight` exercises shadowing, UTF-16 after a non-BMP
 character, unopened siblings, buffer/disk changes and error snapshot recovery
 through stdio. Mode `highlight-control` makes an independent definition query.
-The same-directory project scope and the remaining protocol/macro obligations
-above continue to apply. New source is not dynamic qualification by itself.
+The project modes and the remaining protocol/macro obligations above continue
+to apply. New source is not dynamic qualification by itself.
 
 ## Explicit CJPM projects
 
@@ -70,4 +70,10 @@ Cross-package source queries use the frontend's CJO export identities and actual
 
 This is Linux host development analysis with the fixed shared frontend and matching major1 analysis prefix. It does not establish macro, complete SDK, other-platform or all-protocol qualification. P/core/leaf fixtures are deliberately not a full SDK.
 
-Hover successor: textDocument/hover returns plaintext resolved identifier/type with the request occurrence UTF-16 range. Reference and member types come from the resolved AST occurrence, including instantiated generics and selected overloads; declarations use their own semantic type. Failed snapshots, missing/invalid types and non-symbol positions return null. The snapshot owns all AST types; no cross-instance pointer or name matching is used. Production validation is recorded separately; completion/rename and macro support are unchanged.
+## Semantic hover
+
+`textDocument/hover` returns plaintext resolved identifier/type with the request occurrence UTF-16 range. Declaration identifiers, resolved expression references and member names use the same snapshot as definition/references. Reference and member types come from the resolved AST occurrence, including instantiated generics and selected overloads; declarations use their own semantic type. Display uses the selected frontend's type renderer (for example its uninstantiated generic is `Generics-T`, while `same<Int64>` has the instantiated `(Int64) -> Int64` type). It does not expose declaration bodies or initializers as hover text.
+
+Failed snapshots, missing/invalid types and positions without a collected resolved identifier return null. Unknown nonproject documents keep the existing invalid-params response. The snapshot owns all AST types; no cross-instance pointer or name matching is used. Source documentation extraction, completion and rename are not advertised.
+
+`node tests/hover-client.mjs EXE ANALYSIS_SDK EVIDENCE_DIRECTORY PROJECT [all|target|control|project]` uses real framed stdio. The project argument is an existing normal CJPM-generated database with direct/transitive/binary dependencies; it is not generated by this client. The default checks declared/inferred types, parameter/member references, generic instantiation, overload selection, shadowing, UTF-16 ranges, buffer changes, invalid snapshots, project refresh and natural shutdown. Target isolates hover's type pipeline and control makes an independent definition query. Run against the normal installation and the fresh unpacked installation with the original install hidden. Linux host finite evidence is recorded separately; other platforms, macros and full SDK qualification remain separate.
