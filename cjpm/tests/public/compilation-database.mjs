@@ -17,7 +17,7 @@ for(const name of ['lsp_leaf.cjo','liblsp_leaf.a'])fs.copyFileSync(P+'/modules/l
 pkg('app','project_app','package project_app\nimport project_helper.*\nimport lsp_leaf.*\npublic func use(): Int64 { return forwarded() + answer() }\n','[dependencies]\nproject_helper = {path = "../helper"}\n[target.x86_64-unknown-linux-gnu.bin-dependencies]\npath-option = ['+JSON.stringify(project+'/binary/lsp_leaf')+']\n');
 pkg('control','project_control','package project_control\npublic func independent(): Int64 { return 7 }\n');
 write(project+'/ignored/value.cj','package project_leaf\npublic func diskAnswer(): Bool { return true }\n');
-const args=['build','-V','-j','2','--target-dir',project+'/selected-target','--export-compile-commands',database];
+const args=['build','-i','-V','-j','2','--target-dir',project+'/selected-target','--export-compile-commands',database];
 run('first',args);
 const first=fs.readFileSync(database,'utf8'),entries=JSON.parse(first);assert.equal(entries.length,4);assert(entries.every(e=>e.file.includes('/source-code/')&&!e.file.includes('/ignored/')));assert(entries.some(e=>e.arguments.some(a=>a.includes('/modules/linux_x86_64_cjnative'))));assert(entries.every(e=>e.arguments.includes('-p')));fs.writeFileSync(work+'/first-compilation-database.json',first);
 checks.push('selected-workspace-path-transitive-bin-source-target');
