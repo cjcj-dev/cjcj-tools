@@ -2,7 +2,9 @@ package cangjie_lsp_core
 
 import std.collection.*
 import cangjie_lsp_protocol.*
-import cjcj::ast.{Node, Decl, RefExpr, MemberAccess, Identifier, Walker, VisitAction, Attribute, Ty}
+import cjcj::ast.*
+import cjcj::lex.{Lexer, TokenKind}
+import cjcj::basic.SourceManager
 import cjcj::mangle.BaseMangler
 import cjcj::basic.DiagnosticEngine as BasicDiagnosticEngine
 import cjcj::basic.{Diagnostic, DiagnosticHandler, DiagHandlerKind, DiagSeverity}
@@ -49,6 +51,22 @@ private class BoundOccurrence {
     }
 }
 
+// Immutable source coordinates cross compiler instances; AST pointers never do.
+public class SemanticBinding {
+    public let location: SemanticLocation
+    public let declaration: Option<SemanticLocation>
+    public let exportKey: String
+    public let kind: String
+    public let name: String
+    public let isDeclaration: Bool
+    public let canRename: Bool
+    public init(location: SemanticLocation, declaration: Option<SemanticLocation>, exportKey: String,
+        kind: String, name: String, isDeclaration: Bool, canRename: Bool) {
+        this.location = location; this.declaration = declaration; this.exportKey = exportKey
+        this.kind = kind; this.name = name; this.isDeclaration = isDeclaration; this.canRename = canRename
+    }
+}
+
 // The instance owns source storage, declarations and resolved references for
 // this immutable snapshot. Queries never borrow an AST from another version.
 public class SemanticDocument {
@@ -58,6 +76,7 @@ public class SemanticDocument {
     public let succeeded: Bool
     public let records: ArrayList<Diagnostic>
     private let occurrences = ArrayList<BoundOccurrence>()
+    private let unsupportedImports = HashSet<Decl>()
 
     public init(snapshot: DocumentSnapshot, targetSdk: String, importPaths!: Array<String> = [], companions!: Array<DocumentSnapshot> = [], compilerArguments!: Array<String> = []) {
         this.snapshot = snapshot
@@ -88,6 +107,7 @@ public class SemanticDocument {
                 if (!compilerArguments.isEmpty()) { BaseMangler().MangleExportIds(sourcePackage) }
                 for (file in sourcePackage.files) {
                     Walker(file, visitPre: Some({ node: Node => collect(node) }), walkExprDesugar: false).Walk()
+                    for (spec in file.imports) { collectImport(file, spec.content) }
                 }
             }
         }
@@ -115,13 +135,48 @@ public class SemanticDocument {
         }
     }
 
+    private func collectImport(file: cjcj::ast.File, content: ImportContent): Unit {
+        if (content.kind == ImportKind.IMPORT_MULTI) {
+            for (item in content.items) { collectImport(file, item) }; return
+        }
+        if (content.kind == ImportKind.IMPORT_ALL) { return }
+        let lookup = if (content.kind == ImportKind.IMPORT_ALIAS) { content.aliasName.Val() } else { content.identifier.Val() }
+        let targets = compiler.importManager.getOrThrow().GetImportedDeclsByName(file, lookup)
+        // Ambiguous import groups cannot supply an exact single-token rename.
+        if (targets.size != 1) { for (decl in targets) { unsupportedImports.add(decl) }; return }
+        add(targets[0], content.identifier, false, targets[0].GetTy())
+    }
+
     private func collect(node: Node): VisitAction {
         if (let Some(declaration) <- (node as Decl)) { add(declaration, declaration.identifier, true, declaration.GetTy()) }
         if (let Some(reference) <- (node as RefExpr)) {
-            if (let Some(target) <- reference.ref.target) { add(target, reference.ref.identifier, false, reference.GetTy()) }
+            if (let Some(target) <- reference.ref.target) {
+                if (target.TestAttr(Attribute.CONSTRUCTOR) && target.outerDecl.isSome()) {
+                    add(target.outerDecl.getOrThrow(), reference.ref.identifier, false, reference.GetTy())
+                } else { add(target, reference.ref.identifier, false, reference.GetTy()) }
+            }
         }
         if (let Some(member) <- (node as MemberAccess)) {
             if (let Some(target) <- member.target) { add(target, member.field, false, member.GetTy()) }
+        }
+        if (let Some(reference) <- (node as RefType)) {
+            if (let Some(target) <- reference.ref.target) { add(target, reference.ref.identifier, false, reference.GetTy()) }
+        }
+        if (let Some(reference) <- (node as QualifiedType)) {
+            if (let Some(target) <- reference.target) { add(target, reference.field, false, reference.GetTy()) }
+        }
+        if (let Some(call) <- (node as CallExpr)) {
+            if (let Some(function) <- call.resolvedFunction) {
+                if (let Some(body) <- function.funcBody) {
+                    for (argument in call.args where !argument.name.Empty()) {
+                        for (list in body.paramLists) { for (param in list.params) {
+                            if (param.isNamedParam && param.identifier.Val() == argument.name.Val()) {
+                                add(param, argument.name, false, param.GetTy())
+                            }
+                        } }
+                    }
+                }
+            }
         }
         return VisitAction.WALK_CHILDREN
     }
@@ -152,6 +207,57 @@ public class SemanticDocument {
         for (item in occurrences) {
             if (exportedKey(item.declaration) == key &&
                 (if (declarationsOnly) { item.isDeclaration } else { includeDeclaration || !item.isDeclaration })) { result.add(item.location) }
+        }
+        return result.toArray()
+    }
+
+
+    public func SourcePackageName(): String {
+        let packages = compiler.GetSourcePackages()
+        if (!succeeded || packages.size != 1) { throw IllegalArgumentException("Rename requires one successful source package per command") }
+        return packages[0].fullPackageName
+    }
+    public func ImportedPackages(): Array<String> {
+        let names = HashSet<String>()
+        for (pkg in compiler.importManager.getOrThrow().GetAllImportedPackages()) { names.add(pkg.fullPackageName) }
+        return names.toArray()
+    }
+    public func ExportCandidate(): Array<UInt8> {
+        let _ = SourcePackageName()
+        let bytes = compiler.ExportAST(true, compiler.GetSourcePackages()[0])
+        if (bytes.isEmpty() || diagnostics.GetErrorCount() != 0) { throw IllegalArgumentException("Candidate CJO export failed") }
+        return bytes
+    }
+    public func ValidateRenameName(name: String): Unit {
+        let diag = BasicDiagnosticEngine()
+        let lexer = Lexer(name, diag, SourceManager())
+        let token = lexer.Next()
+        if (token.kind != TokenKind.IDENTIFIER || token.Length() != name.size || token.Begin().column != 1 ||
+            lexer.Next().kind != TokenKind.END || diag.GetErrorCount() != 0) {
+            throw IllegalArgumentException("Rename requires one complete legal identifier")
+        }
+    }
+    private func renameAllowed(decl: Decl): Bool {
+        if (decl.isInMacroCall || decl.curMacroCall.isSome() || unsupportedImports.contains(decl) ||
+            decl.TestAnyAttr(Attribute.CONSTRUCTOR, Attribute.PRIMARY_CONSTRUCTOR, Attribute.ENUM_CONSTRUCTOR) ||
+            decl.TestAnyAttr(Attribute.OVERRIDE, Attribute.OPEN, Attribute.ABSTRACT)) { return false }
+        if (let Some(owner) <- decl.outerDecl) {
+            if (let Some(inherited) <- (owner as InheritableDecl)) {
+                if (!inherited.inheritedTypes.isEmpty() || (owner as InterfaceDecl).isSome() || owner.IsOpen()) { return false }
+            }
+        }
+        return (decl as VarDecl).isSome() || (decl as FuncDecl).isSome() || (decl as StructDecl).isSome() ||
+            (decl as ClassDecl).isSome() || (decl as TypeAliasDecl).isSome() || (decl as GenericParamDecl).isSome()
+    }
+    public func Bindings(): Array<SemanticBinding> {
+        let result = ArrayList<SemanticBinding>()
+        if (!succeeded) { return result.toArray() }
+        for (item in occurrences) {
+            let decl = item.declaration
+            let key = if (decl.exportId.isEmpty() || decl.fullPackageName.isEmpty()) { "" }
+                else { decl.fullPackageName + "|" + decl.exportId }
+            result.add(SemanticBinding(item.location, location(decl.identifier), key,
+                ASTKindName(decl.astKind), decl.identifier.Val(), item.isDeclaration, renameAllowed(decl)))
         }
         return result.toArray()
     }

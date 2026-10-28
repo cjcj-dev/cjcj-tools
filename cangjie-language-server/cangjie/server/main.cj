@@ -91,6 +91,7 @@ class Server {
     let semantics = HashMap<String, SemanticDocument>()
     let workspaceRoots = HashSet<String>()
     var compilationDatabase = ""
+    var versionedEdits = false
     var initialized = false
     var stopped = false
     var exiting = false
@@ -260,11 +261,21 @@ class Server {
             if (let Some(params) <- request.get("params")) {
                 if (let Some(options) <- params.asObject().get("initializationOptions")) { configure(options) }
             }
+            if (let Some(params) <- request.get("params")) {
+                if (let Some(capabilities) <- params.asObject().get("capabilities")) {
+                    if (let Some(workspace) <- capabilities.asObject().get("workspace")) {
+                        if (let Some(edit) <- workspace.asObject().get("workspaceEdit")) {
+                            if (let Some(changes) <- edit.asObject().get("documentChanges")) { versionedEdits = changes.asBool().getValue() }
+                        }
+                    }
+                }
+            }
             initialized = true
             response(key, object([("capabilities", object([("positionEncoding", JsonString("utf-16")),
                 ("textDocumentSync", object([("openClose", JsonBool(true)), ("change", JsonInt(2))])),
                 ("definitionProvider", JsonBool(true)), ("referencesProvider", JsonBool(true)),
-                ("documentHighlightProvider", JsonBool(true)), ("hoverProvider", JsonBool(true))])),
+                ("documentHighlightProvider", JsonBool(true)), ("hoverProvider", JsonBool(true)),
+                ("renameProvider", object([("prepareProvider", JsonBool(true))]))])),
                 ("serverInfo", object([("name", JsonString("cangjie-lsp")), ("version", JsonString("0.1.0"))]))]))
             return
         }
@@ -294,6 +305,21 @@ class Server {
         if (method == "textDocument/didClose") {
             let path = filePath(string(field(params, "textDocument"), "uri")); let old = documents.Get(path)
             documents.Close(path); semantics.remove(path); publish(path, old.version, []); analyze(); return
+        }
+        if (method == "textDocument/prepareRename" || method == "textDocument/rename") {
+            if (!versionedEdits) { throw IllegalArgumentException("Rename requires versioned documentChanges capability") }
+            let path = filePath(string(field(params, "textDocument"), "uri"))
+            let name = if (method == "textDocument/rename") { string(params, "newName") } else { "" }
+            if (method == "textDocument/rename" && name.isEmpty()) { throw IllegalArgumentException("Empty rename identifier") }
+            let transaction = RenameTransaction(sdk, semantics, compilationDatabase, path, position(field(params, "position")), name)
+            if (method == "textDocument/prepareRename") {
+                response(id.getOrThrow(), object([("range", rangeJson(transaction.requestLocation.start, transaction.requestLocation.end)),
+                    ("placeholder", JsonString(transaction.target.name))]))
+            } else {
+                transaction.validate()
+                response(id.getOrThrow(), transaction.result(documents.Snapshots()))
+            }
+            return
         }
         if (method == "textDocument/definition" || method == "textDocument/references" ||
             method == "textDocument/documentHighlight" || method == "textDocument/hover") {
