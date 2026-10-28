@@ -148,7 +148,7 @@ extend SemanticDocument {
             for (pkg in compiler.GetSourcePackages()) { for (file in pkg.files) {
                 Walker(file, visitPre: Some({ node: Node =>
                     if (let Some(decl) <- (node as Decl)) {
-                        if (scopes.contains(decl.scopeName)) { add(decl.identifier.Val(), decl) }
+                        if (scopes.contains(GetScopeNameWithoutTail(decl.scopeName))) { add(decl.identifier.Val(), decl) }
                     }
                     VisitAction.WALK_CHILDREN
                 }), walkExprDesugar: false).Walk()
