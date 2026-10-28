@@ -13,7 +13,7 @@ import cjpm.implement.*
 import cjpm.config.*
 
 let BUILD_LONG_OPTION: Array<String> = ["verbose", "coverage", "output=", "target=", "enable-features=",
-    "no-feature-deduce", "incremental", "target-dir=", "jobs=", "lint", "mock", "member=", "skip-script"]
+    "export-compile-commands=", "no-feature-deduce", "incremental", "target-dir=", "jobs=", "lint", "mock", "member=", "skip-script"]
 let BUILD_SHORT_OPTION: String = "Vo:gij:lm:"
 let BUILD_USAGE: String = """
 Compile a local module and all of its dependencies.
@@ -37,6 +37,7 @@ Available options:
   -o, --output <value>          specify product name when compiling an executable file
   -l, --lint                    enable cjlint code check
   --mock                        enable support of mocking classes in tests
+  --export-compile-commands <file>  write the selected compilation database after success
   --skip-script                 disable script 'build.cj'."""
 @When[os == "Windows"]
 let EXAMPLE_OUTPUT_NAME = "main.exe"
@@ -96,7 +97,7 @@ class BuildCommand <: Handle {
             return false
         }
 
-        let options = ["-o", "--output", "--target", "--target-dir", "-m", "--member"]
+        let options = ["-o", "--output", "--target", "--target-dir", "--export-compile-commands", "-m", "--member"]
         for (val in options) {
             if (unparseArgs.contains(val)) {
                 eprintln("Error: the '${val}' option needs a value")
@@ -129,6 +130,11 @@ class BuildCommand <: Handle {
 
         let (argMap, unparseArgs) = getParseOption(this.arguments, BUILD_SHORT_OPTION, BUILD_LONG_OPTION)
         let buildConfig = BuildConfig()
+        let (database, databaseSet) = getArgValue(argMap, "--export-compile-commands")
+        if (databaseSet) {
+            if (database.isEmpty()) { eprintln("Error: empty compilation database path"); return false }
+            buildConfig.exportCompileCommands = database
+        }
         buildConfig.isVerbose = getBoolOption(argMap, "-V", "--verbose")
         buildConfig.isIncremental = getBoolOption(argMap, "-i", "--incremental")
         buildConfig.isCov = getBoolOption(argMap, "--coverage")

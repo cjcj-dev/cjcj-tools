@@ -13,15 +13,16 @@ function fixture({real=false}={}) {
   const root=fs.mkdtempSync(path.join(evidence,'cjpm-jobs-'));
   const cjpm=path.join(root,'cjpm'), bin=path.join(root,'commands');
   for(const dir of ['build','cpp/third_party/libuv','config','src'])fs.mkdirSync(path.join(cjpm,dir),{recursive:true});
-  fs.mkdirSync(bin);fs.copyFileSync(script,path.join(cjpm,'build/build.py'));
+  fs.mkdirSync(bin);fs.symlinkSync(bin,path.join(root,'bin'));fs.copyFileSync(script,path.join(cjpm,'build/build.py'));
+  fs.copyFileSync(path.join(path.dirname(script),'build.mjs'),path.join(cjpm,'build/build.mjs'));
   fs.writeFileSync(path.join(cjpm,'config/cangjie-repo.toml'),'# fixture\n');
-  const names=['toml','util','config','implement','command'];
+  const names=['toml','util','config','watcher','implement','command'];
   for(const [i,name]of names.entries()) {
     const dir=path.join(cjpm,'src',name);fs.mkdirSync(dir);
     const prior=i ? names[i-1] : null;
     fs.writeFileSync(path.join(dir,'value.cj'),`package cjpm.${name}\n${prior?'import cjpm.'+prior+'.*\n':''}public func value${i}(): Int64 { return ${prior?'value'+(i-1)+'()':'42'} }\n`);
   }
-  fs.writeFileSync(path.join(cjpm,'src/main.cj'),'package cjpm\nimport cjpm.command.*\nmain(): Int64 { println(value4()); return 0 }\n');
+  fs.writeFileSync(path.join(cjpm,'src/main.cj'),'package cjpm\nimport cjpm.command.*\nmain(): Int64 { println(value5()); return 0 }\n');
   fs.writeFileSync(path.join(cjpm,'cpp/CMakeLists.txt'),'cmake_minimum_required(VERSION 3.16)\nproject(jobs_fixture C)\nset(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")\nadd_library(fswatcher STATIC fs.c)\nadd_library(uv STATIC uv.c)\n');
   fs.writeFileSync(path.join(cjpm,'cpp/fs.c'),'int fixture_fs(void) { return 1; }\n');
   fs.writeFileSync(path.join(cjpm,'cpp/uv.c'),'int fixture_uv(void) { return 2; }\n');
@@ -48,11 +49,11 @@ function invoke(f,args=[],overlay={}) {
 }
 function consumed(r,n) {
   assert.equal(r.status,0,r.stdout+'\n'+r.stderr);
-  assert.deepEqual(r.calls.filter(c=>c.kind==='make').map(c=>c.args),[['-j'+n]],'native Make consumed allocated jobs');
-  const cjc=r.calls.filter(c=>c.kind==='cjc');assert.equal(cjc.length,6,'all five packages and final link reached');
+  assert.equal(r.calls.filter(c=>c.kind==='make'||c.kind==='cmake').length,0,'retired native watcher producer is not executed');
+  const cjc=r.calls.filter(c=>c.kind==='cjc');assert.equal(cjc.length,7,'all six CJ packages and final link reached');
   for(const c of cjc)assert.equal(c.args.filter(a=>/^-j\d+$/.test(a)).join(','),'-j'+n,'CJC_JOB_BUDGET_CONSUMED');
 }
-test('native public CLI propagates explicit jobs to Make and every C2 invocation',()=>{
+test('native public CLI propagates explicit jobs to every C2 invocation without CPP watcher',()=>{
   consumed(invoke(fixture(),['--jobs','4']),Math.min(4,budget));
 });
 test('native public CLI defaults, environment, single-core and affinity truncation',()=>{
@@ -64,21 +65,21 @@ test('native public CLI rejects invalid jobs before any producer',()=>{
     assert.equal(r.status,2);assert.match(r.stderr,/jobs must be a positive integer/);assert.equal(r.calls.length,0);
   }
 });
-test('native public CLI returns native and C2 failure without starting dependents',()=>{
-  for(const [kind,pkg]of [['make',''],['cjc','config']]) {
+test('native public CLI returns C2 failure without starting dependents',()=>{
+  for(const [kind,pkg]of [['cjc','config'],['cjc','watcher']]) {
     const f=fixture(),r=invoke(f,['--jobs','2'],{JOBS_FAIL_KIND:kind,JOBS_FAIL_PACKAGE:pkg});
     assert.equal(r.status,37,r.stdout+'\n'+r.stderr);
-    assert.equal(r.calls.filter(c=>c.kind==='cjc').length,kind==='make'?0:3);
+    assert.equal(r.calls.filter(c=>c.kind==='cjc').length,pkg==='config'?3:4);
     assert(!fs.existsSync(path.join(f.cjpm,'dist/cjpm')));
   }
 });
 test('native-only control consumes jobs and skips C2',()=>{
   const r=invoke(fixture(),['--jobs','1','--native-only']);assert.equal(r.status,0,r.stderr);
-  assert.deepEqual(r.calls.map(c=>c.kind),['cmake','make']);assert.deepEqual(r.calls[1].args,['-j1']);
+  assert.deepEqual(r.calls,[],'retired native graph must not run');
 });
-test('independent legacy native-only control reaches native producer',()=>{
+test('independent native-only control is an empty dependency phase',()=>{
   const r=invoke(fixture(),['--native-only']);assert.equal(r.status,0,r.stderr);
-  assert.deepEqual(r.calls.map(c=>c.kind),['cmake','make']);assert.match(r.calls[1].args[0],/^-j[1-9]\d*$/);
+  assert.deepEqual(r.calls,[],'no C++ fallback');
 });
 test('real C2 through native public entry builds installs and runs dependent packages', {skip:!process.env.CJPM_TEST_SDK},()=>{
   const f=fixture({real:true}),r=invoke(f,['--jobs','4']);consumed(r,Math.min(4,budget));

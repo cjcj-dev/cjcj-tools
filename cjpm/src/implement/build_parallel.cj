@@ -22,18 +22,9 @@ import stdx.encoding.json.*
 
 import cjpm.config.*
 import cjpm.util.*
+import cjpm.watcher.CjoPublicationWatcher
 
-// PIPELINE PARALLEL
-@When[(os != "iOS") && (env != "ohos") && (env != "android")]
-foreign func initFSWatcher(dirs: CString, cb: CFunc<(CString) -> Unit>, verbose: Bool): Bool
-
-@When[(os != "iOS") && (env != "ohos") && (env != "android")]
-foreign func startFSWatcher(verbose: Bool): Unit
-
-@When[(os != "iOS") && (env != "ohos") && (env != "android")]
-foreign func stopFSWatcher(verbose: Bool): Unit
-
-private type MonitorChannel = LinkedBlockingQueue<MonitorNotification>
+private type MonitorChannel = LinkedBlockingQueue<(MonitorNotification, String)>
 
 private let monitorChannels = ConcurrentHashMap<TaskId, MonitorChannel>()
 
@@ -43,72 +34,6 @@ enum MonitorNotification {
     | Failed
     | FoundCjoFile
 }
-
-var cjoWatcherCb: (String) -> Unit = { _ => }
-
-@When[(os != "iOS") && (env != "ohos") && (env != "android")]
-func startCjoWatcher(verbose: Bool, ready: LinkedBlockingQueue<Bool>): Unit {
-    if (cjoFileToTaskId.isEmpty()) {
-        ready.add(false)
-        return
-    }
-    
-    let dirsToWatch = HashSet<String>()
-    for (cjoFilePath in cjoFileToTaskId.keys()) {
-        let dir = Path(cjoFilePath).parent.toString()
-        if (!dir.isEmpty()) {
-            dirsToWatch.add(dir)
-        }
-    }
-    
-    if (dirsToWatch.isEmpty()) {
-        ready.add(false)
-        return
-    }
-    
-    let dirs = StringBuilder()
-    for (dir in dirsToWatch) {
-        if (!exists(dir)) {
-            createDirectory(dir)
-        }
-        dirs.append("${dir},")
-    }
-    
-    cjoWatcherCb = { cjoFilePath =>
-        if (let Some(taskId) <- cjoFileToTaskId.get(cjoFilePath)) {
-            notifyMonitor(taskId, MonitorNotification.FoundCjoFile)
-        }
-    }
-    
-    unsafe {
-        let cs = LibC.mallocCString(dirs.toString())
-        let res = initFSWatcher(cs, { cjo => cjoWatcherCb(cjo.toString()) }, verbose)
-        LibC.free(cs)
-        if (!res) {
-            ready.add(false)
-            return
-        }
-        ready.add(true)
-        startFSWatcher(verbose)
-    }
-}
-
-@When[(os == "iOS") || (env == "ohos") || (env == "android")]
-func startCjoWatcher(_: Bool, ready: LinkedBlockingQueue<Bool>): Unit { ready.add(false) }
-
-@When[(os != "iOS") && (env != "ohos") && (env != "android")]
-func stopCjoWatcher(verbose: Bool): Unit {
-    unsafe { stopFSWatcher(verbose) }
-
-    for (cjoFilePath in cjoFileToTaskId.keys()) {
-        if (fileExists(cjoFilePath)) {
-            remove(cjoFilePath)
-        }
-    }
-}
-
-@When[(os == "iOS") || (env == "ohos") || (env == "android")]
-func stopCjoWatcher(_: Bool): Unit {}
 
 /**
  * Self-sufficient compilation unit. 
@@ -297,6 +222,16 @@ func parallelBuild(module: ModuleResolve, buildConfig: BuildConfig): Bool {
         engine.execute()
     }
 
+    if (!buildConfig.exportCompileCommands.isEmpty()) {
+        // Export every selected compile task, including cache hits, using the
+        // compiler argument builder. Runtime scheduler -j admission is not
+        // a semantic input and is deliberately not part of the database.
+        for (task in compileTasksData) {
+            let args = constructCjcInvocation(task, buildConfig)
+            recordCompileCommand(task, args, buildConfig)
+        }
+    }
+
     buildConfig.rebuildList = collectRebuildList(engine)
 
     if (!buildConfig.rebuildList.isEmpty()) {
@@ -314,19 +249,20 @@ private func executeWithFileWatcher<T>(buildConfig: BuildConfig, body: () -> T):
         return body()
     }
 
-    let watcherReady = LinkedBlockingQueue<Bool>()
-    let cjoWatcherFuture = spawn { =>
-        startCjoWatcher(buildConfig.isVerbose, watcherReady)
-    }
-    let watcherStarted = watcherReady.remove()
-
+    if (cjoFileToTaskId.isEmpty()) { return body() }
+    let watcher = CjoPublicationWatcher(cjoFileToTaskId.keys().toArray(), { path =>
+        if (let Some(taskId) <- cjoFileToTaskId.get(path)) {
+            notifyMonitor(taskId, MonitorNotification.FoundCjoFile, source: "watcher")
+        }
+    }, { =>
+        for (taskId in cjoFileToTaskId.values()) { notifyMonitor(taskId, MonitorNotification.Failed, source: "watcher") }
+    })
+    let cjoWatcherFuture = spawn { => watcher.run() }
     let result = try {
         body()
     } finally {
-        if (watcherStarted) {
-            stopCjoWatcher(buildConfig.isVerbose)
-        }
-        let _ = cjoWatcherFuture.get()
+        watcher.stop()
+        try { let _ = cjoWatcherFuture.get() } finally { watcher.clean() }
     }
 
     result
@@ -408,7 +344,9 @@ private func registerCompileTasks(
             compileTask.requireTasks.toArray()
         }
 
-        registerCompilerCallTaskWithDeps(engine, compileTask, taskDeps, buildConfig)
+        let invocationDeps = ArrayList<TaskId>(taskDeps)
+        invocationDeps.add(TaskId.ReadCompilerOptions(compileTask.id.toString()))
+        registerCompilerCallTaskWithDeps(engine, compileTask, invocationDeps.toArray(), buildConfig)
 
         let monitorId = TaskId.Monitor(
             compileTask.fullName, 
@@ -470,7 +408,7 @@ private func createArtifactGroup(compileTask: CompileTask, buildConfig: BuildCon
             let name = "${swapOrgName(compileTask.fullName)}.chir"
             ArtifactGroup(artifact(name, CheckTimestamp), cjo())
         case Obj => 
-            let name = makeTargetObjName(swapOrgName(compileTask.fullName), compileTask.target)
+            let name = getOutput(compileTask).getOrThrow()
             ArtifactGroup(artifact(name, CheckTimestamp), cjo())
         case Unknown(_) => ArtifactGroup(Artifact("", CheckExists), cjo())
     }
@@ -493,27 +431,18 @@ private func registerReadSourceTask(engine: IncrementalEngine, compileTask: Comp
 
 // Create task which stores the hash code of compiler options, which are not affecting the stored location of the binary
 private func registerReadCompilerOptionsTask(engine: IncrementalEngine, compileTask: CompileTask, buildConfig: BuildConfig): Unit {
-    let id = TaskId.ReadCompilerOptions(compileTask.fullName, compileTask.target, compileTask.isDebug, compileTask.mockSupported, compileTask.sourceSetDir)
+    let id = TaskId.ReadCompilerOptions(compileTask.id.toString())
 
     if (engine.taskContext.taskStorage.contains(id)) {
         return
     }
 
-    // Note: We intentionally ignore requiredForTests/exportForTests flags in the hash 
-    // to allow cache reused between `cjpm build` and `cjpm test`.
-    // There's too many scenarious, when redundant rebuilds occur, without this workaround
-    // The proper incrementation between those scenarious is a separate task
+    // Compile and split-link phases have different options and their own input.
+    // Keep test exports, subpackage handling and link flags exactly as emitted.
     let comp: () -> CompilerOptions = { =>
-        let res = ArrayList<String>()
-        res.add(all: appendCommandOptions(compileTask, ignoreTestFlags: compileTask.requiredForTests))
-        for (option in compileTask.customizedOption) {
-            res.add(all: extractOptionByString(option))
-        }
-        res.add(all: extractOptionByString(compileTask.compileOption))
-        res.add(all: extractOptionByString(compileTask.overrideOption))
-        res.add(all: appendLinkOption(compileTask, ignoreTestFlags: compileTask.requiredForTests))
-        res.add(all: getTypeCommand(compileTask, ignoreTestFlags: compileTask.requiredForTests))
-        CompilerOptions.fromString(res |> collectString(delimiter: " "))
+        let res = appendCommandOptions(compileTask)
+        res.add(all: appendCompilerOptions(compileTask))
+        CompilerOptions.fromArgs(res)
     }
     engine.taskContext.createTask(
         id: id,
@@ -573,7 +502,10 @@ private func registerMonitorTask(engine: IncrementalEngine, compileTask: Compile
             return Artifact(cjoPath, CheckTimestamp)
         }
 
-        let result = channel.remove()
+        let (result, source) = channel.remove()
+        if (let Some(_) <- getVariable("CJPM_WAIT_DEPS_DIAG")) {
+            eprintln("[CJPM_MONITOR] source=${source} path=${cjoPath}")
+        }
         match (result) {
             case FoundCjoFile => 
                 let msg = "[Monitor] received 'FoundCjoFile' notification for ${cjoPath}\n"
@@ -595,11 +527,37 @@ private func registerMonitorTask(engine: IncrementalEngine, compileTask: Compile
     task.logFiles = (outLogFile, errLogFile)
 }
 
+// Standard compilation database, from selected tasks (never history/log scraping).
+private func recordCompileCommand(task: CompileTask, args: ArrayList<String>, config: BuildConfig): Unit {
+    if (config.exportCompileCommands.isEmpty() || task.prevStageObj.isSome()) { return }
+    let arguments = ArrayList<JsonValue>([JsonString(state.cjcPath)])
+    for (arg in args) { arguments.add(JsonString(arg)) }
+    let directory = canonicalize(".").toString()
+    synchronized(config.compileCommandsMutex) {
+        for (file in PackageSource(Path(task.packagePath)).files()) {
+            let row = JsonObject()
+            row.put("directory", JsonString(directory))
+            row.put("file", JsonString(file.path.toString()))
+            row.put("arguments", JsonArray(arguments))
+            if (let Some(output) <- getOutput(task)) {
+                row.put("output", JsonString(Path(task.targetPath).join(output).toString()))
+            }
+            config.compileCommands[task.id.toString() + "|" + file.path.toString()] = row.toString()
+        }
+    }
+}
+
 // TASK OUTPUTS
 private struct PackageSource <: Serializable<PackageSource> {
     PackageSource(
         let dirpath: Path
     ) { }
+
+    public func files(): Array<FileInfo> {
+        return Directory.readFrom(dirpath).iterator()
+            .filter { it => it.isRegular() && it.name.endsWith(".cj") && !it.name.endsWith("_test.cj") }
+            .map { it => FileInfo(canonicalize(it.path)) } |> collectArray
+    }
 
     public func serialize(): DataModel {
         dirpath.toString().serialize()
@@ -618,7 +576,11 @@ extend PackageSource <: SerializableIncData<PackageSource> {
                     it.name.endsWith(".cj") &&
                     !it.name.endsWith("_test.cj")
                 }
-                .map { it => it.lastModificationTime } |>
+                .map { it =>
+                    let name = it.name
+                    let source = String.fromUtf8(File.readFrom(it.path))
+                    "${name.size}:${name}${source.size}:${source}"
+                } |>
                 unorderedHash
         }
         return None
@@ -638,8 +600,10 @@ private struct CompilerOptions <: Serializable<CompilerOptions> {
         CompilerOptions(dmint.getValue())
     }
 
-    static func fromString(options: String): CompilerOptions {
-        CompilerOptions(options.hashCode())
+    static func fromArgs(options: ArrayList<String>): CompilerOptions {
+        // Preserve argv boundaries: ["a b"] and ["a", "b"] are distinct inputs.
+        let encoded = options.iterator() |> map { arg: String => "${arg.size}:${arg}" } |> collectString(delimiter: "")
+        CompilerOptions(encoded.hashCode())
     }
 }
 
@@ -759,8 +723,8 @@ extend ArtifactGroup <: SerializableIncData<ArtifactGroup> {
 public enum TaskId <: Serializable<TaskId> & ToString {
     // fullname, sourceSetDir
     | ReadPackageSource(String, String)
-    // fullname, target, debug, mock, sourceSetDir
-    | ReadCompilerOptions(String, String, Bool, Bool, String)
+    // Serialized Compile/Link task ID: one option input per actual invocation.
+    | ReadCompilerOptions(String)
     // fullName, target, debug, mock, outputType, sourceSetDir - Compile task (produces .cjo or .o depending on outputType)
     | Compile(String, String, Bool, Bool, OutputType, String)
     // fullName, target, debug, mock, outputType, sourceSetDir - Link task (links .o files into final binary)
@@ -774,7 +738,7 @@ public enum TaskId <: Serializable<TaskId> & ToString {
     public func toString(): String {
         match (this) {
             case ReadPackageSource(fullName, sourceSetDir) => "read~${fullName}|${sourceSetDir}"
-            case ReadCompilerOptions(fullName, target, debug, mock, sourceSetDir) => "options~${fullName}|${target}|${debug}|${mock}|${sourceSetDir}"
+            case ReadCompilerOptions(invocation) => "options~${invocation}"
             case Compile(fullName, target, debug, mock, outputType, sourceSetDir) => "compile~${fullName}|${target}|${debug}|${mock}|${outputType}|${sourceSetDir}"
             case Link(fullName, target, debug, mock, outputType, sourceSetDir) => "link~${fullName}|${target}|${debug}|${mock}|${outputType}|${sourceSetDir}"
             case Monitor(fullName, target, debug, mock, sourceSetDir) => "monitor~${fullName}|${target}|${debug}|${mock}|${sourceSetDir}"
@@ -835,13 +799,9 @@ public enum TaskId <: Serializable<TaskId> & ToString {
         let values = splitted[1].split("|")
         match (splitted[0]) {
             case "read" => TaskId.ReadPackageSource(values[0], values.get(1) ?? "")
-            case "options" =>
-                TaskId.ReadCompilerOptions(
-                    values[0],
-                    values[1],
-                    Bool.parse(values[2]),
-                    Bool.parse(values[3]),
-                    values.get(4) ?? "")
+            // Older package-wide option IDs remain readable but do not match
+            // the new invocation-specific IDs, so their dependents rebuild.
+            case "options" => TaskId.ReadCompilerOptions(splitted[1])
             case "compile" =>
                 TaskId.Compile(
                     values[0],
@@ -1298,7 +1258,6 @@ func createPackageCompileTasks(r: ResolveItem, buildConfig: BuildConfig, product
                 requireTasks.add(depTask)
             }
             requireTasks.add(TaskId.ReadPackageSource(fullName, sourceSetDir))
-            requireTasks.add(TaskId.ReadCompilerOptions(fullName, target, isDebug, mockSupported, sourceSetDir))
 
             let (outLogFile, errLogFile) = getLogFile(logPath, taskId)
 
@@ -1461,9 +1420,9 @@ extend Array<TaskResult> {
     }
 }
 
-private func notifyMonitor(taskId: TaskId, notification: MonitorNotification): Unit {
+private func notifyMonitor(taskId: TaskId, notification: MonitorNotification, source!: String = "completion"): Unit {
     if (let Some(queue) <- monitorChannels.get(taskId)) {
-        queue.add(notification)
+        queue.add((notification, source))
     }
 }
 
@@ -1861,7 +1820,8 @@ private func getCompilePackageDesc(compileTask: CompileTask): String {
 }
 
 private func callCompiler(compileTask: CompileTask, args: ArrayList<String>, envBuilder: EnvironmentBuilder, buildConfig: BuildConfig): Bool {
-    var execCmdFlag: Bool = true
+    // Only an observed successful compiler exit can make this task succeed.
+    var execCmdFlag: Bool = false
 
     specifyCjcJobs(args, buildConfig.cjcJobs)
     configureJobserverEnvironment(envBuilder)
@@ -2028,7 +1988,6 @@ private func addEndTime(fullName: String): Unit {
 // COMPILER PARALLELIZATION
 private func specifyCjcJobs(args: ArrayList<String>, cjcParallelConfig: CjcParallelConfig): Unit {
     CUR_PARALLEL_SIZE.fetchAdd(1)
-
     if (futJudge(args)) {
         return
     }
