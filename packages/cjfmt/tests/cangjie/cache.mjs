@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {parseArgs} from 'node:util';
 import {createHash} from 'node:crypto';
-const {values:v}=parseArgs({options:{work:{type:'string'},inputs:{type:'string'},trace:{type:'string'}}});
+const {values:v}=parseArgs({options:{work:{type:'string'},inputs:{type:'string'},trace:{type:'string'},'resume-build':{type:'string'}}});
 function compilerCommands(file) {
  return fs.readFileSync(file,'utf8').split('\n').filter(line=>line.includes('execve(')&&line.endsWith('= 0')&&line.includes('/bin/cjc"'));
 }
@@ -18,7 +18,7 @@ if(v.trace){const rows=producing(v.trace);console.log(JSON.stringify({marker:row
 assert(v.work&&v.inputs,'--work and --inputs required');
 const tool=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..'),root=path.resolve(tool,'../..'),work=path.resolve(v.work),inputs=path.resolve(v.inputs);
 assert(!fs.existsSync(work),'work must be new');fs.mkdirSync(work,{recursive:true});
-const ev=path.join(work,'evidence'),source=path.join(work,'source'),build=path.join(work,'build'),install=path.join(work,'install'),unpack=path.join(work,'unpack');fs.mkdirSync(ev);fs.mkdirSync(path.join(source,'packages'),{recursive:true});
+const ev=path.join(work,'evidence'),source=path.join(work,'source'),build=path.resolve(v['resume-build']??path.join(work,'build')),install=path.join(work,'install'),unpack=path.join(work,'unpack');fs.mkdirSync(ev);fs.mkdirSync(path.join(source,'packages'),{recursive:true});
 fs.copyFileSync(path.join(root,'build.mjs'),path.join(source,'build.mjs'));fs.cpSync(tool,path.join(source,'packages/cjfmt'),{recursive:true});
 const script=path.join(source,'packages/cjfmt/build/cangjie.mjs'),main=path.join(source,'packages/cjfmt/src/Main.cj'),original=fs.readFileSync(script,'utf8'),mainOriginal=fs.readFileSync(main,'utf8');
 const entry=path.join(source,'build.mjs'),suite=path.join(tool,'tests/cangjie/cache.mjs'),node=process.execPath;
@@ -33,6 +33,7 @@ function cacheArm(label,extra=[]){const trace=buildArm(label,extra);run(label+'-
 function staged(){const w=build+'/cjfmt/workspace';return ['src/Main.cj','frontend-binaries/parse@cjcj/parse@cjcj.cjo','cjpm.toml','cangjie-repo.toml'].map(n=>({name:n,mtime:fs.statSync(w+'/'+n,{bigint:true}).mtimeNs.toString()}));}
 function functional(label,bin){const src=work+'/'+label+'.cj',formatted=work+'/'+label+'-formatted.cj',exe=work+'/'+label+'-program';fs.writeFileSync(src,'main(){println(7)}\n');run(label+'-format',[bin,'-f',src,'-o',formatted]);check(label+'-layout',fs.readFileSync(formatted,'utf8')==='main() {\n    println(7)\n}\n');run(label+'-compile',[sdk+'/bin/cjc',formatted,'-o',exe]);check(label+'-run',run(label+'-run',[exe]).trim()==='7');}
 try {
+ if(!v['resume-build']){
  const first=buildArm('first');check('first-real-CJ-compile',producing(first).length>0);
  const before=staged(),elf=hash(build+'/cjfmt/cjfmt');fs.writeFileSync(ev+'/first-staged-inputs.json',JSON.stringify({inputs:before,elf}));
  cacheArm('same-default');check('unchanged-staging',JSON.stringify(staged())===JSON.stringify(before));check('cached-ELF',hash(build+'/cjfmt/cjfmt')===elf);
@@ -40,7 +41,8 @@ try {
  // Actual changed source must still invalidate the normal CJPM input graph.
  fs.writeFileSync(main,mainOriginal+'\n// cache source-change control\n');const change=buildArm('source-change');check('source-change-recompiled',producing(change).length>0);
  fs.writeFileSync(main,mainOriginal);const sourceRestore=buildArm('source-restored');check('source-restored-recompiled',producing(sourceRestore).length>0);cacheArm('source-restored-cache');
- const added=path.join(source,'packages/cjfmt/src/CacheRemovalControl.cj');fs.writeFileSync(added,'func cacheRemovalControl(): Int64 { return 1 }\n');check('source-added-recompiled',producing(buildArm('source-added')).length>0);
+ }else{fs.writeFileSync(ev+'/reused-build.json',JSON.stringify({build,inputs:JSON.parse(fs.readFileSync(build+'/cjfmt/inputs.json','utf8')),scope:'reuse completed first/default/explicit/changed/restored arms; continue source-add/delete onward'}));}
+ const added=path.join(source,'packages/cjfmt/src/CacheRemovalControl.cj');fs.writeFileSync(added,'package cjfmt\nfunc cacheRemovalControl(): Int64 { return 1 }\n');check('source-added-recompiled',producing(buildArm('source-added')).length>0);
  fs.unlinkSync(added);check('source-deleted-recompiled',producing(buildArm('source-deleted')).length>0);check('stale-source-removed',!fs.existsSync(build+'/cjfmt/workspace/src/CacheRemovalControl.cj'));cacheArm('source-deleted-cache');
  const anchor='if(previous?.equals(bytes))return;';assert.equal(original.split(anchor).length,2);
  fs.writeFileSync(script,original.replace(anchor,'if(false)return; // isolated same-byte staging cut'));
