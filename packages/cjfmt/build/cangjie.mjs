@@ -62,7 +62,7 @@ if(command==='build'){
  await writeChanged(path.join(workspace,'cjpm.toml'),Buffer.from(manifest));
  await writeChanged(path.join(workspace,'cangjie-repo.toml'),Buffer.from('[repository.cache]\npath = \"./cache\"\n'));
  const env={...process.env,CANGJIE_HOME:sdk,CJPM_CONFIG:path.join(workspace,'cache'),PATH:path.join(sdk,'bin')+path.delimiter+process.env.PATH,LD_LIBRARY_PATH:[path.join(sdk,'runtime/lib/linux_x86_64_cjnative'),path.join(sdk,'tools/lib'),path.join(sdk,'third_party/llvm/lib')].join(path.delimiter)};
- const args=['build','--target-dir',path.join(build,'target'),'-j',values.jobs,'-V'];
+ const args=['build','--incremental','--target-dir',path.join(build,'target'),'-j',values.jobs,'-V'];
  if(values['build-type']==='debug')args.push('-g');
  if(values.coverage)args.push('--coverage');
  if(values.target!=='x86_64-unknown-linux-gnu')args.push('--target',values.target);
