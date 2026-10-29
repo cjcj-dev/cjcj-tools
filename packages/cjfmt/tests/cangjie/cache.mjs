@@ -28,13 +28,13 @@ const commands=[],checks=[];function save(){fs.writeFileSync(ev+'/result.json',J
 function run(label,argv,expected=0){const started=new Date().toISOString(),out=fs.openSync(ev+'/'+label+'.stdout','wx'),err=fs.openSync(ev+'/'+label+'.stderr','wx');const r=spawnSync(argv[0],argv.slice(1),{cwd:work,env,stdio:['ignore',out,err]});fs.closeSync(out);fs.closeSync(err);commands.push({label,argv,cwd:work,started,ended:new Date().toISOString(),rc:r.status,signal:r.signal,error:r.error?.message??null,expected});save();assert.equal(r.status,expected,label);assert.equal(r.signal,null,label);return fs.readFileSync(ev+'/'+label+'.stdout','utf8');}
 function check(name,pass,detail){checks.push({name,pass,detail});save();assert(pass,name);}
 function hash(file){return createHash('sha256').update(fs.readFileSync(file)).digest('hex');}
-function buildArm(label,extra=[]){const trace=ev+'/'+label+'.execve';run(label,['strace','-f','-s','65536','-e','trace=execve','-o',trace,node,entry,'build','--tool','cjfmt','--inputs',inputs,'--build-root',build,...extra]);return trace;}
+function buildArm(label,extra=[]){const trace=ev+'/'+label+'.execve';run(label,['strace','-f','-s','65536','-e','trace=execve','-o',trace,node,entry,'build','--tool','cjfmt','--inputs',inputs,'--build-root',build,...extra]);const cache=build+'/cjfmt/target/release/incremental-cache.json';if(fs.existsSync(cache))fs.copyFileSync(cache,ev+'/'+label+'-incremental-cache.json');return trace;}
 function cacheArm(label,extra=[]){const trace=buildArm(label,extra);run(label+'-target',[node,suite,'--trace',trace]);return trace;}
 function staged(){const w=build+'/cjfmt/workspace';return ['src/Main.cj','frontend-binaries/parse@cjcj/parse@cjcj.cjo','cjpm.toml','cangjie-repo.toml'].map(n=>({name:n,mtime:fs.statSync(w+'/'+n,{bigint:true}).mtimeNs.toString()}));}
 function functional(label,bin){const src=work+'/'+label+'.cj',formatted=work+'/'+label+'-formatted.cj',exe=work+'/'+label+'-program';fs.writeFileSync(src,'main(){println(7)}\n');run(label+'-format',[bin,'-f',src,'-o',formatted]);check(label+'-layout',fs.readFileSync(formatted,'utf8')==='main() {\n    println(7)\n}\n');run(label+'-compile',[sdk+'/bin/cjc',formatted,'-o',exe]);check(label+'-run',run(label+'-run',[exe]).trim()==='7');}
 try {
  const first=buildArm('first');check('first-real-CJ-compile',producing(first).length>0);
- const before=staged(),elf=hash(build+'/cjfmt/cjfmt');
+ const before=staged(),elf=hash(build+'/cjfmt/cjfmt');fs.writeFileSync(ev+'/first-staged-inputs.json',JSON.stringify({inputs:before,elf}));
  cacheArm('same-default');check('unchanged-staging',JSON.stringify(staged())===JSON.stringify(before));check('cached-ELF',hash(build+'/cjfmt/cjfmt')===elf);
  cacheArm('same-explicit',['--','--build-type','release','--jobs','4']);
  // Actual changed source must still invalidate the normal CJPM input graph.
