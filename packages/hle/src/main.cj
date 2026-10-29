@@ -212,6 +212,12 @@ func generateCangjieBindingsForC(moduleName: String, filePath: String, outDir: S
     }
 }
 
+// Resolve installed defaults from the executable, never the caller's cwd.
+// Explicit -b/-j/-r retain std.argopt's original value and precedence.
+func installedHlePath(relative: String): String {
+    return canonicalize(Path(getCommand())).parent.parent.join(relative).toString()
+}
+
 func parseCommandLine(pa: ParsedArguments): Unit {
     let currentPath = getHomeDirectory().toString()
 
@@ -220,8 +226,8 @@ func parseCommandLine(pa: ParsedArguments): Unit {
     if (!cla.outDir.endsWith("/")) {
         cla.outDir += "/"
     }
-    cla.jsASTPath = (pa.options.get("j") ?? analysisFilePath) //  ArkTS文件分析器路径
-    cla.bindingsPath = (pa.options.get("b") ?? cBindingsPath)
+    cla.jsASTPath = (pa.options.get("j") ?? installedHlePath("share/hle/dtsparser/analysis.js")) //  ArkTS文件分析器路径
+    cla.bindingsPath = (pa.options.get("b") ?? installedHlePath("share/hle/dtsparser/node_modules/.bin/" + if (OS == OS_WINDOWS) { "cjbind.exe" } else { "cjbind" }))
     cla.cjModuleName = (pa.options.get("module-name") ?? "")
     cla.is3rd = pa.options.contains("lib")
     cla.autoDect = pa.options.contains("no-detect-include-path")
@@ -229,10 +235,10 @@ func parseCommandLine(pa: ParsedArguments): Unit {
     cla.clangArgs = (pa.options.get("clang-args") ?? "")
 
     @When[cjc_version < "0.59.4"]
-    let pathName = pa.options.get("r") ?? "typescript"
+    let pathName = pa.options.get("r") ?? installedHlePath("share/hle/dtsparser/node_modules/typescript")
 
     @When[cjc_version >= "0.59.4"]
-    let pathName = Path(pa.options.get("r") ?? "typescript").normalize().toString()
+    let pathName = Path(pa.options.get("r") ?? installedHlePath("share/hle/dtsparser/node_modules/typescript")).normalize().toString()
 
     cla.tsPath = pathName
 
@@ -397,7 +403,11 @@ func parseFile(arkpath: String, outDir: String, jsASTPath: String, gconfig: Glob
     }
 
     println("========Analyzing ${arkFileName} Begins!========")
-    execute("node", jsASTPath, arkpath, jsonDir, tsPath, prefix)
+    let bundledNode = installedHlePath(if (OS == OS_WINDOWS) { "bin/node.exe" } else { "bin/node" })
+    // SDK retained entries provide their selected Node through PATH. Standalone
+    // packages carry Node beside hle; both use the existing Node CLI contract.
+    let node = if (exists(bundledNode)) { bundledNode } else { "node" }
+    execute(node, jsASTPath, arkpath, jsonDir, tsPath, prefix)
 
     var arkJson = ""
     if (arkFileName.endsWith(".d.ts")) {
