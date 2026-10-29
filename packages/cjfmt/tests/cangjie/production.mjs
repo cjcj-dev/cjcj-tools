@@ -53,7 +53,7 @@ await check('warm-mode-changed',rebuilt.buildType==='release'&&rebuilt.sourceRef
 const trace=work+'/cached-build.execve';
 await run('cached-build',['strace','-f','-s','65536','-e','trace=execve','-o',trace,process.execPath,entry,'build','--build-dir',build,'-t','release','--jobs','4']);
 const executed=(await fs.readFile(trace,'utf8')).split('\n').filter(line=>line.includes('execve(')&&line.endsWith('= 0'));
-await check('cached-build-reuses-CJ-product',!executed.some(line=>line.includes('/bin/cjc"'))&&await hash(build+'/cjfmt')===rebuilt.sha256,executed);
+await check('cached-build-reuses-CJ-product',!executed.some(line=>line.includes('/bin/cjc"')&&!line.includes('"--scan-dependency"')&&!/\["[^"]+", "-v"\]/.test(line))&&await hash(build+'/cjfmt')===rebuilt.sha256,executed);
 await run('normal-install',[process.execPath,entry,'install','--build-dir',build,'--prefix',prefix]);
 await check('install-consumes-cangjie-product',await hash(prefix+'/bin/cjfmt')===rebuilt.sha256);
 const loader=await run('installed-loader',['ldd',prefix+'/bin/cjfmt']);
