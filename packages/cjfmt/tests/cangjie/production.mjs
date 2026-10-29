@@ -1,5 +1,5 @@
 #!/usr/bin/env zx
-// Real default CMake and legacy process entry; no mock compiler or old formatter.
+// Real package CJPM producer and installed consumers; no mock compiler or old formatter.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -12,8 +12,8 @@ const tool=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..'),wo
 if(await fs.stat(work).catch(()=>null))throw Error('work must be fresh');
 await fs.mkdir(work,{recursive:true});
 const products=path.resolve(v.products);if(await fs.stat(products).catch(()=>null))throw Error('products must be fresh');await fs.mkdir(products,{recursive:true});
-const sdk=path.resolve(v.sdk),build=path.join(tool,'build/build'),prefix=path.join(products,'install');
-if(await fs.stat(build).catch(()=>null))throw Error('first CMake build must be fresh');
+const sdk=path.resolve(v.sdk),build=path.join(products,'build'),prefix=path.join(products,'install');
+if(await fs.stat(build).catch(()=>null))throw Error('first package build must be fresh');
 const env={...process.env,CANGJIE_HOME:sdk,CJFMT_FRONTEND_CJO:v['frontend-cjo'],CJFMT_FRONTEND_LIB:v['frontend-cjo'],CJFMT_FRONTEND_NATIVE:v['frontend-native'],CJFMT_FRONTEND_REF:v['frontend-ref'],CJFMT_SOURCE_REF:v['source-ref'],CANGJIE_BUILD_JOBS:'4',LD_LIBRARY_PATH:[sdk+'/runtime/lib/linux_x86_64_cjnative',sdk+'/tools/lib',sdk+'/third_party/llvm/lib'].join(':')};
 const commands=[],checks=[];
 const hash=async file=>createHash('sha256').update(await fs.readFile(file)).digest('hex');
@@ -35,28 +35,29 @@ async function run(label,argv,expected=0){
  console.log(label+' rc='+p.status);if(p.status!==expected)throw Error(label+' expected '+expected+' actual '+p.status);return p;
 }
 async function check(label,pass,detail){checks.push({label,pass,detail});await save();if(!pass)throw Error(label);}
-async function producerEvidence(label,dir){for(const file of ['commands.json','inputs.json','cjfmt.log'])await fs.copyFile(dir+'/cangjie/'+file,work+'/'+label+'-'+file);}
-const entry=tool+'/build/build.py';
-await run('default-configure',['cmake','-S',tool,'-B',build]);
-await run('install-before-build',['python3',entry,'install','--prefix',work+'/premature'],1);
-await run('default-build',['cmake','--build',build,'--parallel','4']);
+async function producerEvidence(label,dir){for(const file of ['commands.json','inputs.json','cjfmt.log'])await fs.copyFile(dir+'/'+file,work+'/'+label+'-'+file);}
+const entry=tool+'/build/build.mjs';
+await run('install-before-build',[process.execPath,entry,'install','--build-dir',build,'--prefix',work+'/premature'],1);
+await run('default-build',[process.execPath,entry,'build','--build-dir',build,'--jobs','4']);
+await producerEvidence('default',build);
+const release=JSON.parse(await fs.readFile(build+'/inputs.json','utf8'));
+await check('default-is-release',release.buildType==='release');
+await run('explicit-debug',[process.execPath,entry,'build','--build-dir',build,'-t','debug','--jobs','4']);
 await producerEvidence('debug',build);
-const debug=JSON.parse(await fs.readFile(build+'/cjfmt-build.json','utf8'));
-await check('default-is-real-debug',debug.buildType==='debug'&&JSON.parse(await fs.readFile(work+'/debug-commands.json','utf8'))[0].argv.includes('-g'));
-await run('debug-layout',['node',tool+'/tests/cangjie/wiring.mjs',build+'/bin/cjfmt',work+'/debug-wiring']);
-await run('legacy-explicit-release',['python3',entry,'build','-t','release','-j','4']);
+const debug=JSON.parse(await fs.readFile(build+'/inputs.json','utf8'));
+await check('explicit-is-real-debug',debug.buildType==='debug'&&JSON.parse(await fs.readFile(work+'/debug-commands.json','utf8'))[0].argv.includes('-g'));
+await run('explicit-release',[process.execPath,entry,'build','--build-dir',build,'-t','release','--jobs','4']);
 await producerEvidence('release',build);
-const release=JSON.parse(await fs.readFile(build+'/cjfmt-build.json','utf8'));
-await check('warm-mode-changed',release.buildType==='release'&&release.sourceRef===v['source-ref']&&release.frontendRef===v['frontend-ref']);
-const producerTime=(await fs.stat(build+'/cangjie/commands.json')).mtimeMs;
-await run('legacy-cached-build',['python3',entry,'build','-t','release','-j','4']);
-await check('unchanged-cached-build-keeps-product',(await fs.stat(build+'/cangjie/commands.json')).mtimeMs===producerTime);
-await run('legacy-install',['python3',entry,'install','--prefix',prefix]);
-await check('install-consumes-cangjie-product',await hash(prefix+'/bin/cjfmt')===release.sha256);
+const rebuilt=JSON.parse(await fs.readFile(build+'/inputs.json','utf8'));
+await check('warm-mode-changed',rebuilt.buildType==='release'&&rebuilt.sourceRef===v['source-ref']&&rebuilt.frontendRef===v['frontend-ref']);
+const trace=work+'/cached-build.execve';
+await run('cached-build',['strace','-f','-s','65536','-e','trace=execve','-o',trace,process.execPath,entry,'build','--build-dir',build,'-t','release','--jobs','4']);
+const executed=(await fs.readFile(trace,'utf8')).split('\n').filter(line=>line.includes('execve(')&&line.endsWith('= 0'));
+await check('cached-build-reuses-CJ-product',!executed.some(line=>line.includes('/bin/cjc"'))&&await hash(build+'/cjfmt')===rebuilt.sha256,executed);
+await run('normal-install',[process.execPath,entry,'install','--build-dir',build,'--prefix',prefix]);
+await check('install-consumes-cangjie-product',await hash(prefix+'/bin/cjfmt')===rebuilt.sha256);
 const loader=await run('installed-loader',['ldd',prefix+'/bin/cjfmt']);
 await check('no-old-language-server-library',!loader.stdout.includes('libcangjie-lsp'));
-const graph=await run('build-graph',['cmake','--build',build,'--target','help']);
-await check('one-formatter-producer',!graph.stdout.includes('CangjieFormat'));
 async function functional(label,install){
  await run(label+'-functional',['node',tool+'/tests/cangjie/functional.mjs',install+'/bin/cjfmt',sdk+'/bin/cjc',work+'/'+label+'-functional',products+'/programs/'+label]);
  await run(label+'-macros',['node',tool+'/tests/cangjie/macros.mjs',install+'/bin/cjfmt',sdk+'/bin/cjc',work+'/'+label+'-macros',products+'/programs/'+label+'/macros']);
@@ -64,26 +65,26 @@ async function functional(label,install){
  await run(label+'-public-config',['node',tool+'/tests/public/configured-comments.mjs',install+'/bin/cjfmt',sdk+'/bin/cjc',install+'/config/cangjie-format.toml',work+'/'+label+'-public-config']);
 }
 await functional('installed',prefix);
-// Exercise a controlled cut through the same CMake/legacy build entry.
+// Exercise a controlled cut through the same package build entry.
 const cutTool=products+'/cut/tool';
 await fs.cp(tool,cutTool,{recursive:true,filter:src=>src!==build&&!src.startsWith(build+path.sep)});
-const main=cutTool+'/cangjie/Main.cj',original=await fs.readFile(main,'utf8'),anchor='formatted = formatSource(syntax, options, args)';
+const main=cutTool+'/src/Main.cj',original=await fs.readFile(main,'utf8'),anchor='formatted = formatSource(syntax, options, args)';
 if(original.split(anchor).length!==2)throw Error('cut anchor not unique');
 await fs.writeFile(main,original.replace(anchor,'formatted = text'));
-const diff=await run('cut-diff',['diff','-u',tool+'/cangjie/Main.cj',main],1);await fs.writeFile(work+'/cut.diff',diff.stdout);
-const cutEntry=cutTool+'/build/build.py',cutBuild=cutTool+'/build/build',cutInstall=products+'/cut/install';
+const diff=await run('cut-diff',['diff','-u',tool+'/src/Main.cj',main],1);await fs.writeFile(work+'/cut.diff',diff.stdout);
+const cutEntry=cutTool+'/build/build.mjs',cutBuild=products+'/cut/build',cutInstall=products+'/cut/install';
 for(const arm of ['cut','restored']){
  if(arm==='restored')await fs.writeFile(main,original);
- await run(arm+'-normal-build',['python3',cutEntry,'build','-t','release','-j','4']);
+ await run(arm+'-normal-build',[process.execPath,cutEntry,'build','--build-dir',cutBuild,'-t','release','-j','4']);
  await producerEvidence(arm,cutBuild);
- await run(arm+'-normal-install',['python3',cutEntry,'install','--prefix',cutInstall]);
+ await run(arm+'-normal-install',[process.execPath,cutEntry,'install','--build-dir',cutBuild,'--prefix',cutInstall]);
  await run(arm+'-layout',['node',tool+'/tests/cangjie/wiring.mjs',cutInstall+'/bin/cjfmt',work+'/'+arm+'-wiring'],arm==='cut'?1:0);
  if(arm==='cut'){
   const result=JSON.parse(await fs.readFile(work+'/cut-wiring/results.json','utf8'));
   await check('cut-fails-exactly-product-invariant',result.checks.filter(c=>!c.pass).map(c=>c.label).join(',')==='native-layout-consumed');
  }
 }
-await check('cut-source-restored',await fs.readFile(main,'utf8')===original&&await fs.readFile(tool+'/cangjie/Main.cj','utf8')===original);
+await check('cut-source-restored',await fs.readFile(main,'utf8')===original&&await fs.readFile(tool+'/src/Main.cj','utf8')===original);
 const archive=products+'/cjfmt-host-'+v['source-ref'].slice(0,8)+'.tar.gz',unpack=products+'/fresh-unpack';
 await run('same-install-package',['tar','-czf',archive,'-C',prefix,'.']);await fs.mkdir(unpack);
 await run('fresh-unpack',['tar','-xzf',archive,'-C',unpack]);

@@ -1,5 +1,5 @@
 #!/usr/bin/env zx
-// Linux integration gate: public build.py -> build.mjs -> real selected CJC.
+// Linux integration gate: repository build.mjs -> package producer -> selected CJC.
 // No replacement compiler or native producer. Keep the raw execve trace.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 const [sourceArg,outputArg,arm='green']=process.argv.slice(2);
 assert(sourceArg&&outputArg,'usage: build-jobs.mjs <cjpm-source> <evidence> [green|cut-*|restore]');
-const source=path.resolve(sourceArg),output=path.resolve(outputArg),src=path.join(source,'src');
+const source=path.resolve(sourceArg),output=path.resolve(outputArg),src=path.join(source,'src'),repo=path.resolve(source,'../..'),build=path.join(output,'build/cjpm');
 fs.mkdirSync(output,{recursive:true});
 assert(!fs.existsSync(output+'/results.json')&&!fs.existsSync(output+'/commands.json'),'use fresh evidence; retain prior attempts');
 const records=[],checks=[],affinity=os.availableParallelism();
@@ -50,7 +50,7 @@ function executions(text){
 function run(name,args,extra={}){
  const trace=output+'/'+name+'.execve',stdout=output+'/'+name+'.stdout',stderr=output+'/'+name+'.stderr';
  const env={...process.env,...extra};for(const k of Object.keys(env))if(env[k]===undefined)delete env[k];
- const argv=['strace','-f','-s','65536','-e','trace=execve','-o',trace,'python3',source+'/build/build.py',...args];
+ const argv=['strace','-f','-s','65536','-e','trace=execve','-o',trace,process.execPath,repo+'/build.mjs',args[0],'--tool','cjpm','--build-root',path.dirname(build),'--',...args.slice(1)];
  const o=fs.openSync(stdout,'wx'),e=fs.openSync(stderr,'wx'),start=new Date().toISOString();
  const p=spawnSync(argv[0],argv.slice(1),{cwd:source,env,stdio:['ignore',o,e]});fs.closeSync(o);fs.closeSync(e);
  const r={name,argv,cwd:source,start,end:new Date().toISOString(),rc:p.status,signal:p.signal,error:p.error?.message??null,trace,stdout,stderr,
@@ -73,7 +73,7 @@ function budget(name,args,jobs,extra={},nativeOnly=false){
  if(nativeOnly){check(name+':empty-native-phase',r.cjc.length===0,r.cjc);return r;}
  const expected=[...packages.values()].map(p=>p.directory).concat(src),actual=r.cjc.map(c=>value(c.argv,'-p'));
  check(name+':source-production-set',actual.length===expected.length&&expected.every(p=>actual.filter(a=>a===p).length===1),{expected,actual});
- const outputDir=path.join(source,'build/bin/cjpm');
+ const outputDir=path.join(build,'bin/cjpm');
  for(const unit of packages.values()){
   const calls=r.cjc.filter(c=>value(c.argv,'-p')===unit.directory),call=calls[0],archive='lib'+unit.package+'.a';
   check(name+':package '+unit.package,calls.length===1&&call.argv.includes('--output-type=staticlib')&&value(call.argv,'--output-dir')===outputDir&&value(call.argv,'-o')===archive,{calls});
@@ -84,7 +84,7 @@ function budget(name,args,jobs,extra={},nativeOnly=false){
  check(name+':main-consumes-all-CJ-packages',main.length===1&&actual.at(-1)===src&&[...packages.values()].every(p=>link.includes('-l'+p.package)),link);
  check(name+':no-retired-watcher-link',r.cjc.every(c=>!c.argv.some(a=>a==='-lfswatcher'||a==='-luv'||a.includes('/cpp/out'))),r.cjc);
  check(name+':cj-budget',r.cjc.length>0&&r.cjc.every(c=>c.argv.filter(a=>/^-j\d+$/.test(a)).join(',')==='-j'+jobs),r.cjc);
- check(name+':main-published',value(link,'-o')==='cjpm'&&fs.statSync(path.join(source,'dist/cjpm'),{throwIfNoEntry:false})?.size>0,link);
+ check(name+':main-published',value(link,'-o')==='cjpm'&&fs.statSync(path.join(build,'dist/cjpm'),{throwIfNoEntry:false})?.size>0,link);
  return r;
 }
 let fatal=null;
