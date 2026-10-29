@@ -88,7 +88,7 @@ await check('cut-source-restored',await fs.readFile(main,'utf8')===original&&awa
 const archive=products+'/cjfmt-host-'+v['source-ref'].slice(0,8)+'.tar.gz',unpack=products+'/fresh-unpack';
 await run('same-install-package',['tar','-czf',archive,'-C',prefix,'.']);await fs.mkdir(unpack);
 await run('fresh-unpack',['tar','-xzf',archive,'-C',unpack]);
-await check('fresh-unpack-identity',await hash(unpack+'/bin/cjfmt')===release.sha256);
+await check('fresh-unpack-identity',await hash(unpack+'/bin/cjfmt')===rebuilt.sha256);
 await fs.writeFile(work+'/package-identity.json',JSON.stringify({sourceRef:v['source-ref'],frontendRef:v['frontend-ref'],sdk,archive,archiveSha256:await hash(archive),installedSha256:await hash(prefix+'/bin/cjfmt'),unpackedSha256:await hash(unpack+'/bin/cjfmt'),qualification:'host development; target runtime NOT_RUN'},null,2));
 await functional('unpacked',unpack);
 console.log('NORMAL_CANGJIE_PRODUCTION_COMPLETE');
