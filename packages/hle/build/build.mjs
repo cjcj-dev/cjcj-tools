@@ -57,10 +57,10 @@ try {
    fs.copyFileSync(product.executable,path.join(bin,'hle'+product.suffix));fs.chmodSync(path.join(bin,'hle'+product.suffix),0o755);
    const destination=path.join(prefix,'share/hle/dtsparser');fs.mkdirSync(destination,{recursive:true});
    for(const name of fs.readdirSync(parser))if(!name.endsWith('.cj')&&name!=='node_modules')fs.cpSync(path.join(parser,name),path.join(destination,name),{recursive:true});
-   fs.cpSync(selected.modules,path.join(destination,'node_modules'),{recursive:true,filter:p=>path.basename(p)!=='.bin'});
+   fs.cpSync(selected.modules,path.join(destination,'node_modules'),{recursive:true,verbatimSymlinks:true,filter:p=>path.basename(p)!=='.bin'});
    fs.mkdirSync(path.join(destination,'node_modules/.bin'),{recursive:true});
    for(const [from,to]of [[selected.node,path.join(bin,'node'+product.suffix)],[selected.cjbind,path.join(destination,'node_modules/.bin/cjbind'+product.suffix)]]){fs.copyFileSync(from,to);fs.chmodSync(to,0o755);}
-   const tuple=platform+'_cjnative';fs.cpSync(path.join(product.sdk,'runtime/lib',tuple),path.join(prefix,product.suffix?'bin':'lib'),{recursive:true});
+   const tuple=platform+'_cjnative';fs.cpSync(path.join(product.sdk,'runtime/lib',tuple),path.join(prefix,product.suffix?'bin':'lib'),{recursive:true,verbatimSymlinks:true});
    fs.writeFileSync(path.join(prefix,'share/hle/dependencies.json'),JSON.stringify(input,null,2));
   }
   else fs.accessSync(product.executable);
