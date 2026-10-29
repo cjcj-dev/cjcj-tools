@@ -13,7 +13,7 @@ assert.equal(process.platform,'linux');
 assert.ok(path.isAbsolute(cfg.sdk)&&path.isAbsolute(cfg.work));
 assert.ok(Number.isInteger(cfg.jobs)&&cfg.jobs>0);
 assert.ok(Array.isArray(cfg.control)&&cfg.control.length>0);
-const work=cfg.work,sdk=cfg.sdk,tool=path.join(root,'cjcompat');
+const work=cfg.work,sdk=cfg.sdk,tool=path.join(root,'packages/cjcompat');
 fs.mkdirSync(work,{recursive:true});
 const env={...process.env,CANGJIE_HOME:sdk,
   LD_LIBRARY_PATH:[path.join(sdk,'tools/lib'),process.env.LD_LIBRARY_PATH].filter(Boolean).join(':')};
@@ -33,10 +33,10 @@ function check(name,pass){
 const prefix=path.join(work,'install');
 if(!cfg.consumeOnly){
   for(const [i,type] of ['release','debug','release'].entries()){
-    run(`build-${i}-${type}`,['python3',path.join(tool,'build/build.py'),'build','-t',type,'--jobs',String(cfg.jobs),'--sdk',sdk]);
-    const cache=fs.readFileSync(path.join(tool,'build/build/CMakeCache.txt'),'utf8');
-    check(`effective ${type}`,cache.includes(`CMAKE_BUILD_TYPE:STRING=${type==='release'?'Release':'Debug'}`));
-    run(`install-${i}-${type}`,['python3',path.join(tool,'build/build.py'),'install','--prefix',prefix]);
+    run(`build-${i}-${type}`,[process.execPath,path.join(root,'build.mjs'),'build','--tool','cjcompat','--build-root',path.join(work,'build'),'--','--type',type,'--jobs',String(cfg.jobs),'--sdk',sdk,...cfg.frontendArgs]);
+    const inputs=JSON.parse(fs.readFileSync(path.join(work,'build/cjcompat/inputs.json'),'utf8'));
+    check(`effective ${type}`,inputs.type===type);
+    run(`install-${i}-${type}`,[process.execPath,path.join(root,'build.mjs'),'install','--tool','cjcompat','--build-root',path.join(work,'build'),'--prefix',prefix]);
     check(`installed ${type}`,fs.statSync(path.join(prefix,'bin/cjcompat')).size>0);
   }
   // Fresh component archive and unpack; SDK qualification remains the SDK writer's separate gate.

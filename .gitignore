@@ -5,3 +5,7 @@
 cjlint/build/build/*
 cjlint/build/logs/*
 cjlint/dist/
+# Unified out-of-source products
+/target/
+/dist/
+/node_modules/

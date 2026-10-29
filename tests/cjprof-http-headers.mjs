@@ -1,6 +1,6 @@
 #!/usr/bin/env zx
-// Installed public consumer for the selected JSON and httplib headers.
-// Run under the admitted kkk2 workflow after normal build.py build/install.
+// Installed public consumer for the Cangjie HTTP/heap implementation.
+// Run under the admitted workflow after the public build.mjs build/install.
 import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
@@ -33,7 +33,7 @@ function finite(name,argv){
   record({name,argv,cwd:work,rc:r.status,signal:r.signal,error:r.error?.message??null});
   assert.equal(r.status,0,name);return r;
 }
-finite('installed-identity',['sha256sum',exe,path.join(prefix,'lib/libcjprof.so')]);
+finite('installed-identity',['sha256sum',exe,path.join(prefix,'lib/libcjprof-cangjie.so')]);
 const loader=finite('installed-loader',['ldd',exe]);
 check('private prof library loaded',()=>assert.ok(loader.stdout.includes(path.join(prefix,'lib/libcjprof.so'))));
 const baselineHelp=finite('help-independent-control',[exe,'--help']);

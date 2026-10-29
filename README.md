@@ -1,135 +1,43 @@
-# Cangjie Language Command Line Toolchain
+# cjcj-tools
 
-## Introduction
+仓颉工具源码集合，保留原 Cangjie tools 的 Git 历史、作者及 Apache-2.0 with Runtime Library Exception 许可。所有工具业务实现位于 `packages/<tool>/src`，公共构建入口为根目录 `build.mjs`。
 
-This warehouse provides the Cangjie language command-line toolchain, which includes project management tools, formatting tools, multilingual bridging tools, and language service tools, etc. Developers can use it through the command line or integrate it into DevEco Studio.
+| 包 | 正常生产图 | 额外输入 |
+|---|---|---|
+| cjpm | Cangjie 包按依赖序编译；正常 CJPM manifest 保留 | 匹配的 SDK/stdx；仓颉 watcher |
+| cjfmt | `build/cjpm.toml.in` → CJPM | 同源六包 frontend CJO/archive/native |
+| lsp | core + protocol + server，正常 CJPM 图 | 同次完整 frontend、JSON、LLVM shim；analysis SDK 单列 |
+| cjlint | `cjpm.toml.in` → CJPM | frontend/LLVM；显式 analysis SDK，与执行 H 分离 |
+| cjcompat、cjhead | 正常 Cangjie compiler/frontend link | 同源 CJO/archive/runtime_config/shim/LLVM |
+| cjprof | 仓颉 CLI/shared/JNI 业务 | JDK/Lombok/runtime 头；`native/jni-bootstrap.c` 仅启动 runtime，`java/` 是公共 Java API |
+| cjtrace-recover | Cangjie 模块和 mangle 图 | 固定 mangle 源与批准补丁；CMake 仅承载既有 CJ 依赖图 |
+| cjcov、hle | 正常 Cangjie 包图 | 匹配的 SDK/stdx；HLE 另需 Node/npm/cjbind |
 
-## System Architecture
+不建立一个跨不同 SDK 版本的虚假公共 workspace。实际 CJPM manifest/template 保留包边界；需要不同 host 的工具通过逐工具输入选择。直接 compiler 图不提供没有真实依赖的装饰性 manifest。LSP 的 `src/`、`protocol/`、`server/src/` 分别保留原 core、protocol 和 server 模块。业务测试位于各包 `tests/`，旧上游参考样例标为 `tests/reference/`。
 
-The overall architecture diagram of the Cangjie toolchain is as follows:
+## 命令
 
-![The overall architecture diagram of the Cangjie toolchain](./figures/tools-architecture.jpg)
-
-As shown in the diagram, this warehouse provides the following cangjie tools:
-
-- Cangjie Project Manager （Abbreviated as `cjpm`）：used for managing the module system of Cangjie project, covering module initialization, dependency checking and updating operations, providing a unified compilation entry point, supporting incremental compilation, parallel compilation, etc.
-- Cangjie Compatibility Checker (abbreviated as `cjcompat`): compares Cangjie library `.cjo` files from different versions and checks API and ABI compatibility changes.
-- Cangjie Formatter （Abbreviated as `cjfmt`）: a code automatic formatting tool developed based on the Cangjie programming specification.
-- Cangjie HyperLang Extension （Abbreviated as `hle`）: cangjie calls the template auto generation tool for ArkTS interoperability code.
-- Cangjie Language Server （Abbreviated as `lsp`）: the server backend that provides Cangjie language services on the DevEco Studio needs to be used in conjunction with the DevEco Studio client.
-- Cangjie Lint Tool (abbreviated as `cjlint`): A static analysis tool developed based on the Cangjie language coding standards. It helps developers identify issues that violate coding conventions, detect vulnerabilities in code, and write compliant Cangjie code.
-- Cangjie Coverage Tool (abbreviated as `cjcov`): A code coverage tool developed based on the Cangjie language programming standards.
-- Cangjie Profile Tool (`Cangjie Profile`, abbreviated as `cjprof`): Performs CPU hot function sampling on Cangjie programs and generates statistical reports or flame graphs, and also supports dumping and analyzing heap memory to help developers analyze performance and memory issues.
-- Cangjie Exception Stack Trace Recovery Tool (referred to as `cjtrace-recover`): Assists developers in restoring obfuscated exception stack trace information, enabling better issue localization and root cause analysis.
-
-Cangjie Language CLI Toolchain currently supports the following platforms: Windows x86-64, Linux x86-64/AArch64, Mac x86/arm64. OpenHarmony platform is under development.
-
-## Directory Structure
-
-```
-.
-├── cangjie-language-server
-│   ├── build                 # build script
-│   ├── doc                   # construction and usage guidelines
-│   └── src                   # source code
-├── cjcompat
-│   ├── build                 # build script
-│   ├── doc                   # developer guide
-│   ├── figures               # architecture diagrams
-│   ├── include               # header files
-│   └── src                   # source code
-├── cjcov
-│   ├── build    # build script
-│   ├── doc      # developer guide
-│   └── src      # source code
-├── cjfmt
-│   ├── build    # build script
-│   ├── config   # configuration file
-│   ├── doc      # developer guides
-│   ├── include  # configuration file
-│   └── src      # source code
-├── cjhead
-│   ├── build    # build script
-│   ├── config   # configuration file
-│   ├── doc      # construction and usage guidelines
-│   ├── include  # configuration file
-│   └── src      # source code
-├── cjlint
-│   ├── build    # build script
-│   ├── config   # configuration file
-│   ├── doc      # developer guide
-│   └── src      # source code
-├── cjpm
-│   ├── build    # build script
-│   ├── doc      # developer guides
-│   └── src      # source code
-├── cjprof
-│   ├── build    # build script
-│   ├── doc      # developer guides
-│   ├── figures  # architecture diagrams
-│   ├── include  # header files
-│   ├── src      # source code
-│   └── tests    # test cases
-├── cjtrace-recover
-│   ├── build    # build script
-│   ├── doc      # construction and usage guidelines
-│   └── src      # source code
-└── hyperlangExtension
-    ├── build            # build script
-    ├── doc              # construction and usage guidelines
-    └── src              # source code
+```console
+node build.mjs list
+node build.mjs build --tool cjpm --build-root /work/build -- -t release --jobs 4
+node build.mjs install --tool cjpm --build-root /work/build --prefix /work/install/cjpm
+node build.mjs build --inputs /work/inputs.json --build-root /work/build
+node build.mjs install --inputs /work/inputs.json --build-root /work/build --prefix /work/install
+node build.mjs test --tool lsp --suite tests/completion-client.mjs -- <原消费者参数>
+node build.mjs package --prefix /work/install --archive /work/cjcj-tools.tar.gz
 ```
 
-For detailed information about the tools, refer to the following user guides:
+逐工具的 compiler/stdx/frontend/JDK 等参数沿各包 `build/build.mjs` 的真实接口传递。`inputs.json` 只把这些已有参数分配到工具，不增加另一套依赖选择：
 
-- [`cjpm` User Manual](https://gitcode.com/Cangjie/cangjie_docs/blob/main/docs/tools/source_en/cmd-tools/cjpm_manual.md)
-- [`cjprof` User Manual](https://gitcode.com/Cangjie/cangjie_docs/blob/main/docs/tools/source_en/cmd-tools/cjprof_manual.md)
-- [`cjcompat` User Manual](https://gitcode.com/Cangjie/cangjie_docs/blob/main/docs/tools/source_en/cmd-tools/cjcompat_manual.md)
-- [`cjlint` User Manual](https://gitcode.com/Cangjie/cangjie_docs/blob/main/docs/tools/source_en/cmd-tools/cjlint_manual.md)
-- [`cjfmt` User Manual](https://gitcode.com/Cangjie/cangjie_docs/blob/main/docs/tools/source_en/cmd-tools/cjfmt_manual.md)
-- [`cjcov` User Manual](https://gitcode.com/Cangjie/cangjie_docs/blob/main/docs/tools/source_en/cmd-tools/cjcov_manual.md)
+```json
+{
+  "cjpm": {
+    "env": {"CANGJIE_HOME": "/fixed/H", "CANGJIE_STDX_PATH": "/fixed/S/static/stdx"},
+    "build": ["-t", "release", "--jobs", "4"]
+  }
+}
+```
 
-For user guides of other tools, please refer to `doc` directory of each tool.
+`all` 构建需要全部十项明确输入；单工具可使用已设定的正常环境。构建输出只进 `--build-root/<tool>`，多工具安装进 `--prefix/<tool>`；单工具安装以指定 prefix 为根。打包消费已经安装的目录，缺工具主体即失败，不在打包中隐式补建。测试必须选真实消费者，dispatcher 的 fixture 门只证明调用、布局及错误传播，不能冒工具功能验收。
 
-Please refer to the following software architecture diagrams for the command-line tools:
-
-- [software architecture diagram for `cjpm`](./cjpm/doc/developer_guide.md#system-architecture)
-- [software architecture diagram for `cjcompat`](./cjcompat/doc/developer_guide.md#开源项目介绍)
-- [software architecture diagram for `cjfmt`](./cjfmt/doc/developer_guide.md#system-architecture)
-- [software architecture diagram for `cjhead`](./cjhead/doc/developer_guide.md#开源项目介绍)
-- [software architecture diagram for `hle`](./hyperlangExtension/doc/developer_guide.md#开源项目介绍)
-- [software architecture diagram for `lsp`](./cangjie-language-server/doc/developer_guide.md#开源项目介绍)
-- [software architecture diagram for `cjcov`](./cjcov/doc/developer_guide_zh.md#开源项目介绍)
-- [software architecture diagram for `cjlint`](./cjlint/doc/developer_guide_zh.md#开源项目介绍)
-- [software architecture diagram for `cjprof`](./cjprof/doc/developer_guide.md#introduction)
-- [software architecture diagram for `cjtrace-recover`](./cjtrace-recover/doc/developer_guide_zh.md#开源项目介绍)
-
-## Construction Dependencies
-
-The construction of tools relies on Cangjie `SDK`. Please refer to [OpenHarmony SDK Integration Construction Guide](https://gitcode.com/Cangjie/cangjie_build/blob/dev/README.md)
-
-## Related Repositories
-
-- [cangjie_docs](https://gitcode.com/Cangjie/cangjie_docs/tree/main/docs/dev-guide)
-- [cangjie_compiler](https://gitcode.com/Cangjie/cangjie_compiler)
-- [cangjie_stdx](https://gitcode.com/Cangjie/cangjie_stdx)
-- [cangjie_build](https://gitcode.com/Cangjie/cangjie_build)
-- [cangjie_test](https://gitcode.com/Cangjie/cangjie_test)
-
-## Open Source License
-
-This project is licensed under [Apache-2.0 with Runtime Library Exception](./LICENSE). Please enjoy and participate in open source freely.
-
-## Open Source Software Statement
-
-| Software Name        | License             | Usage Description                                               | Main Component | Usage Method                               |
-|----------------------|---------------------|-----------------------------------------------------------------|----------------|--------------------------------------------|
-| flatbuffers          | Apache License V2.0 | Cangjie Language Server serializes and deserializes index data. | LSPServer      | Integrated into the Cangjie binary release |
-| JSON for Modern C++  | MIT License         | Cangjie Language Server for message parsing and encapsulation.  | LSPServer, cjlint      | Integrated into the Cangjie binary release |
-| SQLite               | Public Domain       | Cangjie Language Server uses the database to store index data.  | LSPServer      | Integrated into the Cangjie binary release |
-
-For build methods, refer to the [Openharmony SDK Integration Build Guide](). For additional software dependencies, see [Environment Preparation](). For details on third-party dependencies, see the [Third-Party Open Source Software Documentation](./third_party/README.md)
-
-## Contribution
-
-We welcome contributions from developers in any form, including but not limited to code, documentation, issues, and more.
+HLE 的外部 cjbind 并非本仓重写，Node/npm/cjbind 依赖及 TS/OHOS 未成范围仍单列。Linux host 开发产物不自动获得 target SDK、其它平台、宏或完整语言资格。新仓远端当前未获创建权限；本地候选可用于受控固定 Git 输入，不能称远端可取或正式发行。
