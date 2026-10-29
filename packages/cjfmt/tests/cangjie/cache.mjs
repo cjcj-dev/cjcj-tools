@@ -40,6 +40,8 @@ try {
  // Actual changed source must still invalidate the normal CJPM input graph.
  fs.writeFileSync(main,mainOriginal+'\n// cache source-change control\n');const change=buildArm('source-change');check('source-change-recompiled',producing(change).length>0);
  fs.writeFileSync(main,mainOriginal);const sourceRestore=buildArm('source-restored');check('source-restored-recompiled',producing(sourceRestore).length>0);cacheArm('source-restored-cache');
+ const added=path.join(source,'packages/cjfmt/src/CacheRemovalControl.cj');fs.writeFileSync(added,'func cacheRemovalControl(): Int64 { return 1 }\n');check('source-added-recompiled',producing(buildArm('source-added')).length>0);
+ fs.unlinkSync(added);check('source-deleted-recompiled',producing(buildArm('source-deleted')).length>0);check('stale-source-removed',!fs.existsSync(build+'/cjfmt/workspace/src/CacheRemovalControl.cj'));cacheArm('source-deleted-cache');
  const anchor='if(previous?.equals(bytes))return;';assert.equal(original.split(anchor).length,2);
  fs.writeFileSync(script,original.replace(anchor,'if(false)return; // isolated same-byte staging cut'));
  fs.writeFileSync(ev+'/cut-source.mjs',fs.readFileSync(script));
