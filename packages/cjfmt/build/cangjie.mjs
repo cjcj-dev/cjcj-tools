@@ -6,7 +6,7 @@ import {spawn} from 'node:child_process';
 import {parseArgs} from 'node:util';
 import {createHash} from 'node:crypto';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const {positionals,values}=parseArgs({allowPositionals:true,options:{sdk:{type:'string'},cjpm:{type:'string'},'frontend-cjo':{type:'string'},'frontend-lib':{type:'string'},'frontend-native':{type:'string'},'frontend-ref':{type:'string'},'source-ref':{type:'string'},'build-dir':{type:'string'},jobs:{type:'string',default:'4'},'build-type':{type:'string',default:'release'},target:{type:'string',default:'x86_64-unknown-linux-gnu'},coverage:{type:'boolean'},output:{type:'string'},prefix:{type:'string'}}});
+const {positionals,values}=parseArgs({allowPositionals:true,options:{sdk:{type:'string'},cjpm:{type:'string'},'cjpm-sdk':{type:'string'},'frontend-cjo':{type:'string'},'frontend-lib':{type:'string'},'frontend-native':{type:'string'},'frontend-ref':{type:'string'},'source-ref':{type:'string'},'build-dir':{type:'string'},jobs:{type:'string',default:'4'},'build-type':{type:'string',default:'release'},target:{type:'string',default:'x86_64-unknown-linux-gnu'},coverage:{type:'boolean'},output:{type:'string'},prefix:{type:'string'}}});
 const build=path.resolve(values['build-dir']||path.join(root,'build-cangjie'));
 const command=positionals[0];
 // CJPM tracks staged dependency files. Leave unchanged inputs untouched so a
@@ -25,7 +25,8 @@ if(command==='build'){
  if(!/^[1-9][0-9]*$/.test(values.jobs))throw Error('invalid --jobs');
  for(const option of ['frontend-ref','source-ref'])if(values[option]&&!/^[0-9a-f]{40}$/.test(values[option]))throw Error('invalid --'+option);
  const sdk=path.resolve(values.sdk),cjo=path.resolve(values['frontend-cjo']),lib=path.resolve(values['frontend-lib']);
- const cjpm=values.cjpm||path.join(sdk,'tools/bin/cjpm');
+ const cjpmSdk=path.resolve(values['cjpm-sdk']??sdk);
+ const cjpm=values.cjpm||path.join(cjpmSdk,'tools/bin/cjpm');
  const workspace=path.join(build,'workspace');await fs.mkdir(path.join(workspace,'src'),{recursive:true});
  const sources=(await fs.readdir(path.join(root,'src'))).filter(name=>name.endsWith('.cj'));
  for(const name of sources)await stageFile(path.join(root,'src',name),path.join(workspace,'src',name));
@@ -61,7 +62,7 @@ if(command==='build'){
   .replace('@PACKAGES@',packageOptions.join('\n'));
  await writeChanged(path.join(workspace,'cjpm.toml'),Buffer.from(manifest));
  await writeChanged(path.join(workspace,'cangjie-repo.toml'),Buffer.from('[repository.cache]\npath = \"./cache\"\n'));
- const env={...process.env,CANGJIE_HOME:sdk,CJPM_CONFIG:path.join(workspace,'cache'),PATH:path.join(sdk,'bin')+path.delimiter+process.env.PATH,LD_LIBRARY_PATH:[path.join(sdk,'runtime/lib/linux_x86_64_cjnative'),path.join(sdk,'tools/lib'),path.join(sdk,'third_party/llvm/lib')].join(path.delimiter)};
+ const env={...process.env,CANGJIE_HOME:sdk,CJPM_CONFIG:path.join(workspace,'cache'),PATH:path.join(sdk,'bin')+path.delimiter+process.env.PATH,LD_LIBRARY_PATH:[path.join(cjpmSdk,'runtime/lib/linux_x86_64_cjnative'),path.join(cjpmSdk,'tools/lib'),path.join(cjpmSdk,'third_party/llvm/lib')].join(path.delimiter)};
  const args=['build','--incremental','--target-dir',path.join(build,'target'),'-j',values.jobs,'-V'];
  if(values['build-type']==='debug')args.push('-g');
  if(values.coverage)args.push('--coverage');

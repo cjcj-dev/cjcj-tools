@@ -29,3 +29,5 @@ fs.renameSync(work+'/missing-lsp',work+'/installed/lsp/bin/cangjie-lsp');invoke(
 inputs.cjfmt.env.FAIL_TOOL='cjfmt';fs.writeFileSync(input,JSON.stringify(inputs));invoke(fixture,['build','--inputs',input],37);
 invoke(fixture,['build','--tool','cjpm','--inputs',input]);delete inputs.cjfmt.env.FAIL_TOOL;fs.writeFileSync(input,JSON.stringify(inputs));invoke(fixture,['build','--tool','cjfmt','--inputs',input]);
 console.log('PUBLIC_ENTRY_CONTRACT_OK '+work);
+// Keep the bootstrap dependency contract on the existing public test entry.
+await import('./bootstrap-cjpm.mjs');

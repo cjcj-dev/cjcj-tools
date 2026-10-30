@@ -6,7 +6,7 @@ import {parseArgs} from 'node:util';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 const source=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const {positionals,values:v}=parseArgs({allowPositionals:true,options:{sdk:{type:'string'},'analysis-sdk':{type:'string'},'frontend-source':{type:'string'},'frontend-artifacts':{type:'string'},
+const {positionals,values:v}=parseArgs({allowPositionals:true,options:{sdk:{type:'string'},'cjpm-sdk':{type:'string'},'analysis-sdk':{type:'string'},'frontend-source':{type:'string'},'frontend-artifacts':{type:'string'},
   'frontend-ref':{type:'string'},'frontend-runtime-object':{type:'string'},'llvm-shim':{type:'string'},'llvm-library':{type:'string'},
   'build-dir':{type:'string'},prefix:{type:'string'},jobs:{type:'string',default:'4'}}});
 const action=positionals[0],build=path.resolve(v['build-dir']??path.join(source,'build/cangjie-build'));
@@ -45,9 +45,10 @@ if(action==='build') {
     .replace('@LINK@',quote([configObject,llvmShim,llvmLibrary,'-lstdc++'].join(' ')))
     .replace('@FRONTEND@',JSON.stringify(directories.map(p=>path.join(artifacts,p+'@cjcj'))));
   fs.writeFileSync(path.join(project,'cjpm.toml'),manifest);
-  const cjc=path.join(sdk,'bin/cjc'),cjpm=path.join(sdk,'tools/bin/cjpm');
+  const cjpmSdk=path.resolve(v['cjpm-sdk']??sdk);
+  const cjc=path.join(sdk,'bin/cjc'),cjpm=path.join(cjpmSdk,'tools/bin/cjpm');
   const env={...process.env,CANGJIE_HOME:sdk,PATH:path.join(sdk,'bin')+path.delimiter+process.env.PATH,
-    LD_LIBRARY_PATH:[path.join(sdk,'runtime/lib/linux_x86_64_cjnative'),path.join(sdk,'lib/linux_x86_64_cjnative')].join(path.delimiter)};
+    LD_LIBRARY_PATH:[path.join(cjpmSdk,'runtime/lib/linux_x86_64_cjnative'),path.join(cjpmSdk,'lib/linux_x86_64_cjnative'),path.join(cjpmSdk,'third_party/llvm/lib'),path.join(cjpmSdk,'tools/lib')].join(path.delimiter)};
   delete env.LD_PRELOAD;delete env.LD_AUDIT;
   // CJPM derives the real sema subpackage link closure from the supplied CJO
   // metadata, exactly as the normal shared frontend producer's consumer does.
@@ -57,7 +58,7 @@ if(action==='build') {
   if(!executable)throw Error('Normal cjpm build did not produce cjlint executable');
   run('relocatable-loader-path',['patchelf','--set-rpath','$ORIGIN/../lib',executable]);
   const metadata={tool:'cjlint',language:'Cangjie',reference:'271b2f4c20be309205eca5e58bb09ffa24727a64',
-    frontend:{ref:v['frontend-ref'],source:frontend,artifacts:v['frontend-artifacts'],runtimeObject:configObject,llvmShim,llvmLibrary},host:{sdk,compiler:cjc,sha256:hash(cjc)},
+    frontend:{ref:v['frontend-ref'],source:frontend,artifacts:v['frontend-artifacts'],runtimeObject:configObject,llvmShim,llvmLibrary},host:{sdk,compiler:cjc,sha256:hash(cjc)},packageManager:{sdk:cjpmSdk,executable:cjpm},
     executable,sha256:hash(executable),qualification:'host development; complete rule and target-runtime qualification pending'};
   if(v['analysis-sdk'])metadata.analysis={sdk:path.resolve(v['analysis-sdk']),scope:'explicit analysis modules; separate from host execution SDK'};
   fs.writeFileSync(path.join(build,'product.json'),JSON.stringify(metadata,null,2)+'\n');
