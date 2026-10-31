@@ -31,8 +31,18 @@ const containers = ['StringRef', 'IntRef'].map(name => declaration(compression, 
 await fs.writeFile(path.join(output, 'MangleUtils.cj'),
   'package cjcj::mangle\n\n' + [...constants, ...functions, ...containers].join('\n\n') + '\n');
 // T271's native demangler already rejects bare D. Carry that exact, approved
-// compatibility correction on generated build input until the compiler owns it.
+// compatibility correction on generated build input. Newer compiler sources
+// already own the same correction; accept only its exact reverse-applicable
+// shape, rather than ignoring any failed patch or changing the input original.
 const patch = fileURLToPath(new URL('mangle-bare-D.diff', import.meta.url));
-const result = spawnSync('patch', ['--batch', '--forward', '-p1', '-i', patch], {cwd: output, stdio: 'inherit'});
-if (result.error) throw result.error;
-if (result.status !== 0) throw Error('mangle-bare-D patch failed; update the explicit compiler source contract');
+function patchStatus(options) {
+  const result = spawnSync('patch', ['--batch', '--fuzz=0', '-p1', '-i', patch, ...options], {cwd: output, stdio: 'inherit'});
+  if (result.error) throw result.error;
+  if (result.signal) throw Error('mangle-bare-D patch interrupted: ' + result.signal);
+  return result.status;
+}
+if (patchStatus(['--forward', '--dry-run']) === 0) {
+  if (patchStatus(['--forward']) !== 0) throw Error('mangle-bare-D patch failed after preparation check');
+} else if (patchStatus(['--reverse', '--dry-run']) !== 0) {
+  throw Error('mangle-bare-D source shape changed; update the explicit compiler source contract');
+}

@@ -57,3 +57,5 @@ Windows 交叉构建保留 `--target windows-x86_64 --target-sysroot /path/to/mi
 - `tests/public/demangler-probe.cj`：直接测试产品所用同一模块的类型 API，用既有 primitive-types 测试验证裸 D 拒绝及 Dh/i 独立控制。此装置不安装。
 
 构建、测试和安装的实际资格以当前固定输入的执行记录为准，不能以帮助输出或单个函数样例代替完整验收。
+
+Stage2 SDK 固定编译器 f15f9e04c97653f34c8b3371904e4b847707548c 已上收同一 bare D 拒绝逻辑。准备器在生成副本检查精确补丁：未上收则正常应用，已上收仅反向 dry-run 成功才接受，其它形态拒绝；不修改输入原件。`tests/public/prepare-source.mjs` 覆盖未上收、已上收与漂移拒绝，真实语义仍由正常产物及安装消费者验证。
