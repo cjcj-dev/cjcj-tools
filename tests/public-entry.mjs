@@ -31,3 +31,4 @@ invoke(fixture,['build','--tool','cjpm','--inputs',input]);delete inputs.cjfmt.e
 console.log('PUBLIC_ENTRY_CONTRACT_OK '+work);
 // Keep the bootstrap dependency contract on the existing public test entry.
 await import('./bootstrap-cjpm.mjs');
+await import('./cjcompat-frontend.mjs');

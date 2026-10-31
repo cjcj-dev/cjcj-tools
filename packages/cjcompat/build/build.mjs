@@ -6,7 +6,7 @@ import {spawnSync} from 'node:child_process';
 import {parseArgs} from 'node:util';
 import {createHash} from 'node:crypto';
 const tool=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const {positionals,values:v}=parseArgs({allowPositionals:true,options:{sdk:{type:'string'},'compiler-source':{type:'string'},'compiler-libs':{type:'string'},'tools-revision':{type:'string'},'runtime-config':{type:'string'},shim:{type:'string'},llvm:{type:'string'},'build-dir':{type:'string'},prefix:{type:'string'},output:{type:'string'},type:{type:'string',default:'release'},jobs:{type:'string',default:'4'}}});
+const {positionals,values:v}=parseArgs({allowPositionals:true,options:{sdk:{type:'string'},'compiler-source':{type:'string'},'frontend-ref':{type:'string'},'compiler-libs':{type:'string'},'tools-revision':{type:'string'},'runtime-config':{type:'string'},shim:{type:'string'},llvm:{type:'string'},'build-dir':{type:'string'},prefix:{type:'string'},output:{type:'string'},type:{type:'string',default:'release'},jobs:{type:'string',default:'4'}}});
 const command=positionals[0],build=path.resolve(v['build-dir']??path.join(tool,'build/cangjie-build'));
 fs.mkdirSync(build,{recursive:true});
 const records=[];
@@ -20,8 +20,10 @@ function required(name){if(!v[name])throw Error('--'+name+' is required');return
 if(command==='build'){
  const sdk=required('sdk'),source=required('compiler-source'),libs=required('compiler-libs'),shim=required('shim'),llvm=required('llvm');
  if(!['release','debug'].includes(v.type)||!/^\d+$/.test(v.jobs)||Number(v.jobs)<1)throw Error('invalid build type/jobs');
+ const frontendRef=v['frontend-ref']??'523a2dbec18cae73c83f1553d938f4eff0664508';
+ if(!/^[0-9a-f]{40}$/.test(frontendRef))throw Error('frontend-ref must be a full source commit');
  const revision=spawnSync('git',['rev-parse','HEAD'],{cwd:source,encoding:'utf8'});
- if(revision.status!==0||revision.stdout.trim()!=='523a2dbec18cae73c83f1553d938f4eff0664508')throw Error('compiler source must be fixed 523a2dbec18cae73c83f1553d938f4eff0664508');
+ if(revision.status!==0||revision.signal||revision.stdout.trim()!==frontendRef)throw Error('compiler source must be fixed '+frontendRef);
  const env={...process.env,CANGJIE_HOME:sdk,TMPDIR:process.env.TMPDIR??build,
  LD_LIBRARY_PATH:[sdk+'/runtime/lib/linux_x86_64_cjnative',sdk+'/tools/lib',path.dirname(llvm)].join(':')};
  delete env.LD_PRELOAD;delete env.LD_AUDIT;
