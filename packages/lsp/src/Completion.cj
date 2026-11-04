@@ -63,6 +63,27 @@ public class CompletionName {
 }
 
 extend SemanticDocument {
+    // Project namespace discovery uses the parsed import at the exact request
+    // token. It does not infer import context from source text or diagnostics.
+    public func CompletionImportPath(marker: String, at: Int64): Option<(String, Bool)> {
+        let paths = ArrayList<(String, Bool)>()
+        for (pkg in compiler.GetSourcePackages()) { for (file in pkg.files) {
+            Walker(file, visitPre: Some({ node: Node =>
+                if (let Some(content) <- (node as ImportContent)) {
+                    let id = content.identifier
+                    if (id.Val() == marker && id.Begin().fileID != 0) {
+                        let source = compiler.GetSourceManager().GetSource(id.Begin().fileID)
+                        if (source.path == snapshot.uri && source.PosToOffset(id.Begin()) == at) {
+                            paths.add((content.GetPrefixPath(), content.hasDoubleColon && content.prefixPaths.size == 1))
+                        }
+                    }
+                }
+                VisitAction.WALK_CHILDREN
+            }), walkExprDesugar: false).Walk()
+        } }
+        return if (paths.size == 1) { Some(paths[0]) } else { None }
+    }
+
     public func CompletionExternalError(marker: String, at: Int64): String {
         // Preserve diagnostics outside the hole. A matching candidate must
         // repair the entire normal SEMA input; these diagnostics forbid

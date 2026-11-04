@@ -2,6 +2,7 @@ package cangjie_lsp
 import std.collection.*
 import std.fs.*
 import std.console.Console
+import std.sort.*
 import stdx.encoding.json.*
 import cangjie_lsp_core.*
 import cangjie_lsp_protocol.*
@@ -15,6 +16,7 @@ class CompletionRequest {
     let marker: String
     let database: String
     let databaseBytes: String
+    let projectPackages = HashSet<String>()
     init(sdk: String, semantics: HashMap<String, SemanticDocument>, database: String,
         path: String, point: ProtocolPosition) {
         this.sdk = sdk; this.database = database
@@ -32,8 +34,22 @@ class CompletionRequest {
             let graph = ProjectGraph(database)
             let command = graph.files.get(path).getOrThrow()
             arguments = command.semanticArguments()
+            // Driver configuration owns the module identity even while source
+            // declarations disagree. Only successful commands supply child
+            // package identities; no workspace/package-declaration scan occurs.
+            for (entry in graph.commands.values()) {
+                let module = entry.moduleName()
+                if (!module.isEmpty()) { projectPackages.add(module) }
+            }
             for (file in command.files) { selected.add(semantics.get(file).getOrThrow().snapshot) }
             for ((file, semantic) in semantics) {
+                if (semantic.succeeded) {
+                    let module = graph.files[file].moduleName()
+                    let packageName = semantic.SourcePackageName()
+                    if (module.isEmpty() || packageName == module || packageName.startsWith(module + ".")) {
+                        projectPackages.add(packageName)
+                    }
+                }
                 if (!command.files.contains(file) && !semantic.succeeded) { throw IllegalArgumentException("Completion requires valid project dependencies") }
             }
         }
@@ -78,6 +94,37 @@ class CompletionRequest {
     func result(): JsonValue {
         let probeText = changed(marker)
         let probe = compile(probeText)
+        if (!database.isEmpty()) {
+            let context = probe.CompletionImportPath(marker, span.first)
+            if (let Some((prefix, organization)) <- context) {
+                let candidates = HashSet<String>()
+                for (packageName in projectPackages) {
+                    if (prefix.isEmpty()) {
+                        // A configured module is emitted whole, including its
+                        // organization. Children are selected after its dot.
+                        let parts = packageName.split(".")
+                        candidates.add(parts[0])
+                    } else {
+                        let path = prefix + if (organization) { "::" } else { "." }
+                        if (packageName.startsWith(path)) { candidates.add(packageName[path.size..].split(".")[0]) }
+                    }
+                }
+                if (prefix.isEmpty() || !candidates.isEmpty()) {
+                    probe.compiler.DestroyASTResources()
+                    let items = ArrayList<JsonValue>()
+                    let sorted = candidates.toArray(); sort(sorted)
+                    for (name in sorted where name.startsWith(span.prefix)) {
+                        items.add(object([("label", JsonString(name)), ("detail", JsonString("project package")),
+                            ("textEdit", object([("range", rangeJson(ProtocolPositionAt(original.text, span.first), ProtocolPositionAt(original.text, span.last))),
+                                ("newText", JsonString(name))]))]))
+                    }
+                    if (String.fromUtf8(File.readFrom(database)) != databaseBytes) {
+                        throw IllegalArgumentException("Project configuration changed during completion")
+                    }
+                    return object([("isIncomplete", JsonBool(false)), ("items", JsonArray(items.toArray()))])
+                }
+            }
+        }
         let outsideError = probe.CompletionExternalError(marker, span.first)
         let discovered = try { probe.CompletionNames(marker, span.first, "") }
             finally { probe.compiler.DestroyASTResources() }

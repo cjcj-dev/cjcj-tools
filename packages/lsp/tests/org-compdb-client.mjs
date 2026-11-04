@@ -47,8 +47,18 @@ try{
  await complete('configured-module','package '+module+'\nimport t|\nmain():Int64{42}\n',[module],['testOrg::cj0993']);
  await complete('configured-child','package '+module+'\nimport '+module+'.x|\nmain():Int64{42}\n',['xoo']);
  await complete('old-org-filter','package '+module+'\nimport testO|\nmain():Int64{42}\n',[],['testOrg::cj0993']);
- // A local value query remains independent of project import-path discovery.
+ // The ordinary semantic control uses an independently valid command. Mixed
+ // declarations deliberately make the preceding import-discovery project red.
+ const validDb=root+'/compile-valid.json';
+ fs.writeFileSync(validDb,JSON.stringify([{directory:root,file:main,arguments:rootArgs}],null,2));
+ send('workspace/didChangeConfiguration',{settings:{compilationDatabase:validDb}});
  await complete('local-control','package '+module+'\nmain():Int64{let answer=42\nans|wer}\n',['answer']);
+ const renamed='otherOrg::otherModule',renamedDb=root+'/compile-renamed.json';
+ fs.writeFileSync(renamedDb,JSON.stringify([{directory:root,file:main,arguments:rootArgs.map(x=>x===module?renamed:x)}],null,2));
+ send('workspace/didChangeConfiguration',{settings:{compilationDatabase:renamedDb}});
+ await complete('configuration-change','package '+module+'\nimport o|\nmain():Int64{42}\n',[renamed],[module,'testOrg::cj0993']);
+ send('workspace/didChangeConfiguration',{settings:{compilationDatabase:db}});
+ await complete('configuration-restored','package '+module+'\nimport t|\nmain():Int64{42}\n',[module],[renamed,'testOrg::cj0993']);
  send('shutdown',{},'stop');assert.equal((await take(x=>x.id==='stop')).result,null);send('exit');p.stdin.end();const r=await closed;assert.equal(r.rc,0);commands.push({label:'installed-stdio',argv:[exe,'--sdk',sdk],started,ended:new Date().toISOString(),...r});
 }finally{clearTimeout(timer);if(!ended)p.kill('SIGTERM');fs.writeFileSync(work+'/server.stderr',stderr);save();}
 process.exitCode=checks.every(x=>x.pass)?0:1;

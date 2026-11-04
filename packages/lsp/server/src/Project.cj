@@ -17,6 +17,16 @@ class ProjectCommand {
     func absolute(value: String): String {
         return if (Path(value).isAbsolute()) { value } else { Path(directory).join(value).toString() }
     }
+    func moduleName(): String {
+        let parsed = ArgList()
+        if (!CreateOptionTable().ParseArgs(semanticArguments(), parsed)) {
+            throw IllegalArgumentException("Invalid project module arguments")
+        }
+        for (option in parsed.optionArgs) {
+            if (option.info.GetID() == ID.MODULE_NAME) { return option.value }
+        }
+        return ""
+    }
     func semanticArguments(): Array<String> {
         let result = ArrayList<String>([arguments[0]])
         var i: Int64 = 1
