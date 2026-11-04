@@ -36,6 +36,7 @@ class Syntax {
     let postfix = HashSet<Int64>()
     let binaryOperators = HashSet<Int64>()
     let binaryGroups = HashMap<Int64, Int64>()
+    let assignments = HashMap<Int64, Int64>()
     let operatorLines = HashSet<Int64>()
     let spacedColons = HashSet<Int64>()
     let angles = HashSet<Int64>()
@@ -121,6 +122,20 @@ class Syntax {
                 if (call.args.size >= 2 && call.rightParenPos.line != call.args[call.args.size - 1].end.line) {
                     addPosition(multiline, call.leftParenPos)
                 }
+            }
+            if (let Some(params) <- (node as FuncParamList)) {
+                if (params.params.size >= 2 && params.rightParenPos.line != params.params[params.params.size - 1].end.line) {
+                    addPosition(multiline, params.leftParenPos)
+                }
+            }
+            if (let Some(decl) <- (node as VarDecl)) {
+                if (let Some(expr) <- decl.initializer) { assignments[sourceOffset(source, expr.begin)] = sourceOffset(source, expr.end) }
+            }
+            if (let Some(decl) <- (node as VarWithPatternDecl)) {
+                if (let Some(expr) <- decl.initializer) { assignments[sourceOffset(source, expr.begin)] = sourceOffset(source, expr.end) }
+            }
+            if (let Some(assign) <- (node as AssignExpr)) {
+                if (let Some(expr) <- assign.rightExpr) { assignments[sourceOffset(source, expr.begin)] = sourceOffset(source, expr.end) }
             }
             if (let Some(subscript) <- (node as SubscriptExpr)) { chains.add((chainOf(subscript).toArray(), subscript.end)) }
             if (let Some(array) <- (node as ArrayLit)) {

@@ -163,7 +163,9 @@ class Layout {
         if (a == "." || a == "::" || a == "@" || a == "?." || a == "$" || a == "#") { return text("") }
         if (syntax.unary.contains(left.first)) { return text("") }
         if (syntax.binaryOperators.contains(left.first)) {
-            return if (syntax.operatorLines.contains(left.first)) { text(" ") } else { soft(" ") }
+            return if (syntax.operatorLines.contains(left.first)) { text(" ") } else {
+                soft(" ", penalty: if (["&&", "||", "??"].contains(a)) { 10 } else { 20 })
+            }
         }
         if ((a == "<" && syntax.angles.contains(left.first)) ||
             (b == ">" && syntax.angles.contains(right.first)) ||
@@ -189,6 +191,16 @@ class Layout {
         var previous: Int64 = -1
         while (i < last) {
             let t = syntax.tokens[i]
+            if (t.first != skipGroup) {
+                if (let Some(end) <- syntax.assignments.get(t.first)) {
+                    let stop = tokenAt(end)
+                    if (previous >= 0 && stop > i && stop <= last) {
+                        let literal = stop == i + 1 && (t.text.startsWith("\"") || t.text.startsWith("'") || t.text.startsWith("#"))
+                        docs.add(choice(sequence(i, stop, inList, skipGroup: t.first), options.indentWidth, literal))
+                        previous = stop - 1; i = stop; continue
+                    }
+                }
+            }
             docs.add(if (forced && previous >= 0 && syntax.tokens[previous].text == ",") { hard() } else { separator(previous, i, inList) })
             if (t.first != skipGroup) {
                 if (let Some(end) <- syntax.enumGroups.get(t.first)) {
@@ -203,7 +215,7 @@ class Layout {
             var groupEnd = i + 1
             while (groupEnd < last && syntax.tokens[groupEnd].first < binaryEnd) { groupEnd++ }
             if (t.first != skipGroup && binaryEnd > t.last && groupEnd <= last && syntax.tokens[groupEnd - 1].last == binaryEnd) {
-                docs.add(group(nest(sequence(i, groupEnd, inList, skipGroup: t.first), options.indentWidth)))
+                docs.add(fill(nest(sequence(i, groupEnd, inList, skipGroup: t.first), options.indentWidth)))
                 i = groupEnd - 1
             } else if (let Some(end) <- syntax.opaque.get(t.first)) {
                 docs.add(macroPrefix(t, end))
@@ -222,12 +234,12 @@ class Layout {
                             parts.add(nest(concat(body), options.indentWidth)); parts.add(hard())
                         } else {
                             let space = if (t.text == "{") { " " } else { "" }
-                            let body = ArrayList<Doc>(); body.add(if (forcedList) { hard() } else { soft(space) }); body.add(inner)
-                            parts.add(nest(concat(body), options.indentWidth)); parts.add(if (forcedList) { hard() } else { soft(space) })
+                            let body = ArrayList<Doc>(); body.add(if (forcedList) { hard() } else { soft(space, penalty: 60) }); body.add(inner)
+                            parts.add(nest(concat(body), options.indentWidth)); parts.add(if (forcedList) { hard() } else { soft(space, penalty: 60) })
                         }
                     }
                     parts.add(text(syntax.tokens[close].text))
-                    docs.add(if (block) { concat(parts) } else { group(concat(parts)) })
+                    docs.add(if (block) { concat(parts) } else if (forcedList) { group(concat(parts)) } else { group(fill(concat(parts))) })
                     i = close
                 } else { docs.add(text(t.text)) }
             } else { docs.add(literal(t)) }
