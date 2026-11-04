@@ -22,7 +22,7 @@ for(const [label,extra]of [['default',[]],['explicit',['-b',binding]]]){
   const generated=fs.readFileSync(output+'/fixture.cj','utf8');checks.push({label:label+'-generated-target-reached',pass:true});save();
   for(const pattern of [/public const X16_MACRO/,/public const X17_MACRO/,/Color_BLUE/,/Color_YELLOW/,/fixed_value/,/binding_answer/,/generated declaration must keep this comment/])assert.match(generated,pattern);
   if(label==='explicit')assert.equal(generated,fs.readFileSync(work+'/default/fixture.cj','utf8'),'explicit and installed default consume identical frozen cjbind');
-  fs.writeFileSync(output+'/main.cj','package fixture\nmain(){unsafe{println(binding_answer(22))}}\n');
+  fs.writeFileSync(output+'/main.cj','package fixture\nmain(){let n=Int32(X16_MACRO+X17_MACRO)-Int32(Color_Color_BLUE)-Int32(Color_Color_YELLOW)+fixed_value-9\nunsafe{println(binding_answer(n))}}\n');
   run(label+'-c-compile',['cc','-c',work+'/fixture.c','-o',output+'/fixture.o']);
   run(label+'-cj-compile',[sdk+'/bin/cjc','-p',output,output+'/fixture.o','--set-runtime-rpath','-o',output+'/program']);
   const result=run(label+'-run',[output+'/program']);assert.equal(result.stdout.trim(),'42');checks.push({label,pass:true});
