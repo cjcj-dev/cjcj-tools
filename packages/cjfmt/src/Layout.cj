@@ -226,7 +226,8 @@ class Layout {
                     }
                 }
             }
-            docs.add(if (forced && previous >= 0 && syntax.tokens[previous].text == ",") { hard() } else { separator(previous, i, inList) })
+            docs.add(if (forced && previous >= 0 && syntax.tokens[previous].text == "," &&
+                t.token.kind != TokenKind.COMMENT) { hard() } else { separator(previous, i, inList) })
             if (t.first != skipGroup) {
                 if (let Some(end) <- syntax.enumGroups.get(t.first)) {
                     let stop = tokenAt(end)
