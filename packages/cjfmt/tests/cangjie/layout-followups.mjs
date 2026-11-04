@@ -27,6 +27,10 @@ const cases=[
  {name:'multiline-string',width:32,input:'main(){let s="""\n  literal  . text\n${3+4}\n"""\nprintln(s)}\n',output:'  literal  . text\n7',unbounded:true},
  {name:'chain',width:32,input:'class A{func next():A{this}\nfunc value():Int64{7}}\nmain(){println(A().next().next().value())}\n',output:'7',pattern:/\.next\(\)\n\s+\.next\(\)/},
  {name:'wide-control',width:120,input:'main(){println(100+200+300)}\n',output:'600',expected:'main() {\n    println(100 + 200 + 300)\n}\n'},
+ {name:'explicit-list',width:120,input:'func f(\na:Int64,\nb:Int64\n):Int64{a+b}\nmain(){println(f(3,4))}\n',output:'7',pattern:/f\(\n\s+a: Int64,\n\s+b: Int64\n\)/},
+ {name:'overlong-literal',width:24,input:'main(){let s="literal with deliberately indivisible words"\nprintln(s)}\n',output:'literal with deliberately indivisible words',pattern:/let s = "literal/,unbounded:true},
+ {name:'multiline-block-interpolation',width:32,input:'main(){let s="""\n  ${let a=3\nlet b=4\na+b}\n"""\nprintln(s)}\n',output:'  7',pattern:/\$\{\n {6}let a = 3/,unbounded:true},
+ {name:'tabbed-literal',width:32,input:'main(){println(#"\tword  . x"#)}\n',output:'\tword  . x',pattern:/\tword  \. x/,unbounded:true},
 ];
 for(const item of cases.filter(x=>filter==='all'||filter.split(',').includes(x.name))){
  try{

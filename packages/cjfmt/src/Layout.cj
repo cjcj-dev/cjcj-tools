@@ -88,7 +88,15 @@ class Layout {
                         if (token.token.kind == TokenKind.COMMENT && token.text.startsWith("//")) { singleLine = false }
                     }
                     let doc = layout.sequence(1, nested.tokens.size - 1, false)
-                    pieces.add(if (singleLine) { group(flattenLines(doc)) } else { Doc(9, children: [group(doc)]) })
+                    if (singleLine) { pieces.add(group(flattenLines(doc))) }
+                    else {
+                        let block = ArrayList<Doc>()
+                        if (body.body.size > 1) {
+                            let content = ArrayList<Doc>(); content.add(hard()); content.add(doc)
+                            block.add(nest(concat(content), options.indentWidth)); block.add(hard())
+                        } else { block.add(group(doc)) }
+                        pieces.add(Doc(9, children: [concat(block)]))
+                    }
                     cursor = end
                 }
             }
