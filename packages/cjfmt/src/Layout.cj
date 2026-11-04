@@ -74,13 +74,13 @@ class Layout {
 
     func literal(t: Lexeme): Doc {
         if (let Some(expressions) <- syntax.interpolations.get(t.first)) {
-            let value = StringBuilder()
+            let pieces = ArrayList<Doc>()
             var cursor = t.first
             for (expr in expressions) {
                 if (let Some(body) <- expr.block) {
                     let begin = sourceOffset(syntax.source, body.begin) + 1
                     let end = sourceOffset(syntax.source, body.end) - 1
-                    value.append(syntax.source.buffer[cursor..begin])
+                    pieces.add(text(syntax.source.buffer[cursor..begin]))
                     let nested = Syntax(syntax, body)
                     let layout = Layout(nested, options)
                     var singleLine = !t.text.startsWith("\"\"\"") && !t.text.startsWith("'''" )
@@ -88,13 +88,12 @@ class Layout {
                         if (token.token.kind == TokenKind.COMMENT && token.text.startsWith("//")) { singleLine = false }
                     }
                     let doc = layout.sequence(1, nested.tokens.size - 1, false)
-                    let renderer = Renderer(options.lineLength, options.lineBreak)
-                    value.append(renderer.finish(if (singleLine) { group(flattenLines(doc)) } else { group(doc) }, 0).trimAscii())
+                    pieces.add(if (singleLine) { group(flattenLines(doc)) } else { Doc(9, children: [group(doc)]) })
                     cursor = end
                 }
             }
-            value.append(syntax.source.buffer[cursor..t.last])
-            return text(value.toString())
+            pieces.add(text(syntax.source.buffer[cursor..t.last]))
+            return concat(pieces)
         }
         return text(t.text)
     }
@@ -210,7 +209,11 @@ class Layout {
                     let stop = tokenAt(end)
                     if (previous >= 0 && stop > i && stop <= last) {
                         let literal = stop == i + 1 && (t.text.startsWith("\"") || t.text.startsWith("'") || t.text.startsWith("#"))
-                        docs.add(choice(fill(sequence(i, stop, inList, skipGroup: t.first)), options.indentWidth, literal))
+                        let body = sequence(i, stop, inList, skipGroup: t.first)
+                        let rhs = if ((syntax.binaryGroups.get(t.first) ?? t.last) == end && end > t.last) {
+                            fill(nest(body, options.indentWidth))
+                        } else { fill(body) }
+                        docs.add(choice(rhs, options.indentWidth, literal))
                         previous = stop - 1; i = stop; continue
                     }
                 }

@@ -83,6 +83,7 @@ class Renderer {
     var column: Int64 = 0
     var pendingIndent: Int64 = 0
     var lineStart: Bool = true
+    var lineIndent: Int64 = 0
     init(width: Int64, newline: String) { this.width = width; this.newline = newline }
 
     func flatSize(doc: Doc, remaining: Int64): Int64 {
@@ -98,12 +99,15 @@ class Renderer {
     }
     func append(value: String): Unit {
         if (value.isEmpty()) { return }
-        if (lineStart) { result.add(spaces(pendingIndent)); column = pendingIndent; lineStart = false }
+        if (lineStart) { result.add(spaces(pendingIndent)); column = pendingIndent; lineIndent = pendingIndent; lineStart = false }
         result.add(value)
         // Tabs use output column tab stops, including tabs inside literals.
         let rows = value.split("\n", removeEmpty: false)
         for (row in 0..rows.size) {
-            if (row > 0) { column = 0 }
+            if (row > 0) {
+                column = 0
+                lineIndent = Unicode.DisplayWidth(rows[row][..rows[row].size - rows[row].trimAsciiStart().size])
+            }
             let tabs = rows[row].split("\t", removeEmpty: false)
             for (i in 0..tabs.size) {
                 if (i > 0) { column = (column / 8 + 1) * 8 }
@@ -231,7 +235,7 @@ class Renderer {
                 if (current + 1 + first > width && !(doc.value == "literal" && first > width)) {
                     breakLine(indent + doc.amount)
                 } else { append(" ") }
-                render(doc.children[0], indent + doc.amount, false, suffix: suffix)
+                render(doc.children[0], indent, false, suffix: suffix)
             case 8 =>
                 // Render the complete receiver first. Calls and lambdas may
                 // change its final column, so source token widths cannot decide
@@ -249,6 +253,7 @@ class Renderer {
                     tail.add(all: suffix)
                     render(doc.children[i], indent + if (expand) { doc.amount } else { 0 }, flat, suffix: tail.toArray())
                 }
+            case 9 => render(doc.children[0], lineIndent, flat, suffix: suffix)
             case _ => ()
         }
     }
