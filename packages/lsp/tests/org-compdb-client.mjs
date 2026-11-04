@@ -15,9 +15,9 @@ fs.writeFileSync(main,'package '+module+'\nmain():Int64{42}\n');
 fs.writeFileSync(other,'package testOrg::cj0993\nfunc unchanged():Int64{1}\n');
 fs.writeFileSync(child,'public package '+module+'.xoo\npublic let x:Int64=42\n');
 const cjc=sdk+'/bin/cjc';
-const childArgs=[cjc,'--module-name',module,'--output-type=staticlib','--output-dir',out,'-p',src+'/xoo','-o',out+'/libxoo.a'];
+const childArgs=[cjc,'--module-name',module,'--output-type=staticlib','--output-dir',out,'-p',src+'/xoo','-o','libxoo.a'];
 run('build-real-child',childArgs);
-const rootArgs=[cjc,'--module-name',module,'--import-path',out,'--output-type=staticlib','--output-dir',out,'-p',src,'--no-sub-pkg','-o',out+'/libroot.a'];
+const rootArgs=[cjc,'--module-name',module,'--import-path',out,'--output-type=staticlib','--output-dir',out,'-p',src,'--no-sub-pkg','-o','libroot.a'];
 fs.writeFileSync(db,JSON.stringify([
  ...[main,other].map(file=>({directory:root,file,arguments:rootArgs})),{directory:root,file:child,arguments:childArgs}
 ],null,2));
