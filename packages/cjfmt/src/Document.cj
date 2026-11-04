@@ -28,8 +28,9 @@ func choice(doc: Doc, indent: Int64, literal: Bool): Doc {
 func flattenLines(doc: Doc): Doc {
     if (doc.kind == 5 || doc.kind == 4) { return text(if (doc.kind == 5) { " " } else { doc.value }) }
     let children = ArrayList<Doc>()
+    if (doc.kind == 7) { children.add(text(" ")) }
     for (child in doc.children) { children.add(flattenLines(child)) }
-    return Doc(doc.kind, value: doc.value, children: children.toArray(), amount: doc.amount)
+    return Doc(if (doc.kind == 7) { 1 } else { doc.kind }, value: doc.value, children: children.toArray(), amount: doc.amount)
 }
 func spaces(count: Int64): String {
     return String.fromUtf8(Array<UInt8>(if (count > 0) { count } else { 0 }, repeat: b' '))
@@ -88,7 +89,7 @@ class Renderer {
         if (remaining < 0) { return width + 1 }
         if (doc.kind == 5 || doc.value.contains("\n")) { return width + 1 }
         if (doc.kind == 0 || doc.kind == 4) { return Unicode.DisplayWidth(doc.value) }
-        var total: Int64 = 0
+        var total: Int64 = if (doc.kind == 7) { 1 } else { 0 }
         for (child in doc.children) {
             total += flatSize(child, remaining - total)
             if (total > remaining) { break }

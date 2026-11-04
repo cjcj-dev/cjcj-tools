@@ -196,7 +196,7 @@ class Layout {
                     let stop = tokenAt(end)
                     if (previous >= 0 && stop > i && stop <= last) {
                         let literal = stop == i + 1 && (t.text.startsWith("\"") || t.text.startsWith("'") || t.text.startsWith("#"))
-                        docs.add(choice(sequence(i, stop, inList, skipGroup: t.first), options.indentWidth, literal))
+                        docs.add(choice(fill(sequence(i, stop, inList, skipGroup: t.first)), options.indentWidth, literal))
                         previous = stop - 1; i = stop; continue
                     }
                 }
