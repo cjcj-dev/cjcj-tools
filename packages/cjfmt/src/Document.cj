@@ -125,6 +125,7 @@ class Renderer {
         for (doc in docs) {
             if (doc.kind == 4 || doc.kind == 5 || doc.kind == 7) { break }
             if (doc.kind == 0) {
+                if (doc.value.isEmpty()) { continue }
                 if (doc.value.contains("\t")) { return width + 1 }
                 let lines = doc.value.split("\n", removeEmpty: false)
                 total += Unicode.DisplayWidth(lines[0])
@@ -140,6 +141,7 @@ class Renderer {
     func inlinePrefix(doc: Doc): (Int64, Int64) {
         if (doc.kind == 4 || doc.kind == 5 || doc.kind == 7) { return (0, 1) }
         if (doc.kind == 0) {
+            if (doc.value.isEmpty()) { return (0, 0) }
             let lines = doc.value.split("\n", removeEmpty: false)
             return (if (doc.value.contains("\t")) { width + 1 } else { Unicode.DisplayWidth(lines[0]) }, if (lines.size > 1) { 1 } else { 0 })
         }
