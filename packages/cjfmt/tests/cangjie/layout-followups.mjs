@@ -14,7 +14,8 @@ function run(label,argv,expected=0){
  assert.equal(p.status,expected,label+' '+p.stderr);return p;
 }
 const cases=[
- {name:'fill-arguments',width:32,input:'func f(a:Int64,b:Int64,c:Int64):Int64{a+b+c}\nmain(){println(f(1000,2000,3000))}\n',output:'6000',pattern:/f\(1000, 2000,\n\s+3000\)/},
+ {name:'fill-arguments',width:32,input:'func f(a:Int64,b:Int64,c:Int64,d:Int64):Int64{a+b+c+d}\nmain(){let n=f(10000,20000,30000,40000)\nprintln(n)}\n',output:'100000',pattern:/f\(10000, 20000,\n\s+30000, 40000\)/},
+ {name:'exact-width-control',width:32,input:'func f(a:Int64,b:Int64,c:Int64):Int64{a+b+c}\nmain(){println(f(1000,2000,3000))}\n',output:'6000',pattern:/    println\(f\(1000, 2000, 3000\)\)/},
  {name:'suffix-budget',width:25,input:'main(){println((100+200+300+400))}\n',output:'1000'},
  {name:'assignment-choice',width:28,input:'main(){let veryLongName=1234567890\nprintln(veryLongName)}\n',output:'1234567890',pattern:/veryLongName =\n\s+1234567890/},
  {name:'tuple-generic-if',width:32,input:'func id<T>(x:T):T{x}\nmain(){let t=(10000,20000,30000)\nif(t[0]+t[1]+t[2]==60000){println(id<Int64>(t[0]+t[1]+t[2]))}}\n',output:'60000'},
