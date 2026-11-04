@@ -88,7 +88,7 @@ class Renderer {
 
     func flatSize(doc: Doc, remaining: Int64): Int64 {
         if (remaining < 0) { return width + 1 }
-        if (doc.kind == 5 || doc.value.contains("\n")) { return width + 1 }
+        if (doc.kind == 5 || doc.value.contains("\n") || (doc.kind == 8 && doc.value == "force")) { return width + 1 }
         if (doc.kind == 0 || doc.kind == 4) { return Unicode.DisplayWidth(doc.value) }
         var total: Int64 = if (doc.kind == 7) { 1 } else { 0 }
         for (child in doc.children) {
@@ -246,8 +246,8 @@ class Renderer {
                 let rest = ArrayList<Doc>()
                 for (i in 1..doc.children.size) { rest.add(doc.children[i]) }
                 let current = if (lineStart) { pendingIndent } else { column }
-                let expand = !flat && (doc.value == "force" || (doc.value == "auto" &&
-                    current + flatSize(concat(rest), width) + inlineWidth(suffix) > width))
+                let expand = doc.value == "force" || (!flat && doc.value == "auto" &&
+                    current + flatSize(concat(rest), width) + inlineWidth(suffix) > width)
                 for (i in 1..doc.children.size) {
                     if (expand) { breakLine(indent + doc.amount) }
                     let tail = ArrayList<Doc>()

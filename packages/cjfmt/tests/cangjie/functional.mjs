@@ -54,7 +54,7 @@ const cases=[
  {name:'enum-match',input:'enum E{| A | B}\nmain(){let e=E.A\nlet n=match(e){case E.A=>7 case E.B=>9}\nprintln(n)}\n',output:'7'},
  {name:'array',input:'main(){let a=[\n1,\n2,\n4\n]\nprintln(a[0]+a[1]+a[2])}\n',output:'7',pattern:/\[\n        1,\n        2,\n        4\n    \]/},
  {name:'chains',input:'class A{func next():A{return this}\nfunc value():Int64{return 7}}\nmain(){let a=A()\nprintln(a.next().next().value())}\n',config:'chains.toml',output:'7',pattern:/a\n\s+\.next\(\)\n\s+\.next\(\)\n\s+\.value\(\)/},
- {name:'long-list',input:'func add(a:Int64,b:Int64,c:Int64):Int64{return a+b+c}\nmain(){println(add(1000000000,2000000000,3000000000))}\n',config:'narrow.toml',output:'6000000000',pattern:/add\(\n/},
+ {name:'long-list',input:'func add(a:Int64,b:Int64,c:Int64):Int64{return a+b+c}\nmain(){println(add(1000000000,2000000000,3000000000))}\n',config:'narrow.toml',output:'6000000000',pattern:/add\(1000000000,\n {12}2000000000,\n {12}3000000000\)\)/},
  {name:'nested-comment',input:'main(){/* outer /* nested */ end */println(7)}\n',output:'7',pattern:/\/\* outer \/\* nested \*\/ end \*\//},
  {name:'bom',input:'\uFEFFmain(){println(7)}\n',expected:'\uFEFFmain() {\n    println(7)\n}\n',output:'7'},
  {name:'members',input:'interface Value{func get():Int64}\nclass Box <: Value{let n:Int64=7\npublic func get():Int64{return n}}\nmain(){println(Box().get())}\n',output:'7',pattern:/let n: Int64 = 7\n    public func get/},
@@ -97,6 +97,7 @@ for(const item of cases){
  const out=await fs.readFile(first,'utf8');
  await check(item.name+'-format-reached',()=>assert.doesNotMatch(formatted.stdout,/original source retained/));
  await check(item.name+'-content',()=>{if(item.expected!==undefined)assert.equal(out,item.expected);if(item.pattern)assert.match(out,item.pattern);});
+ if(item.config==='narrow.toml')await check(item.name+'-width',()=>{for(const line of out.trimEnd().split('\n'))assert(line.length<=25,'25-column control '+JSON.stringify(line));});
  await run(item.name+'-idempotence',[fmt,'-f',first,'-o',second,...opts]);
  await check(item.name+'-idempotent',async()=>assert.equal(await fs.readFile(second,'utf8'),out));
  const executable=path.join(productDirectory,item.name+'-program');
