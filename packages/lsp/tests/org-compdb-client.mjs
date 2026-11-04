@@ -26,7 +26,7 @@ const started=new Date().toISOString(),p=spawn(exe,['--sdk',sdk],{cwd:work,env,s
 let data=Buffer.alloc(0),stderr='',ended=false;const queue=[];
 const closed=new Promise(resolve=>{p.on('error',e=>resolve({error:e.message}));p.on('close',(rc,signal)=>{ended=true;resolve({rc,signal});});});
 p.stderr.on('data',x=>stderr+=x);p.stdout.on('data',chunk=>{data=Buffer.concat([data,chunk]);for(;;){const end=data.indexOf('\r\n\r\n');if(end<0)return;const match=/Content-Length: (\d+)/i.exec(data.subarray(0,end).toString());assert(match,'framed stdout');const size=Number(match[1]);if(data.length<end+4+size)return;const value=JSON.parse(data.subarray(end+4,end+4+size));data=data.subarray(end+4+size);queue.push(value);transcript.push({receive:value});save();}});
-function send(method,params={},id){const value={jsonrpc:'2.0',method,params,...(id===undefined?{}:{id})},body=Buffer.from(JSON.stringify(value));transcript.push({send:value});p.stdin.write(Buffer.concat([Buffer.from(`Content-Length: ${body.length}\r\n\r\n`),body]));}
+function send(method,params={},id){const value={jsonrpc:'2.0',method,params,...(id===undefined?{}:{id})},body=Buffer.from(JSON.stringify(value));transcript.push({send:value});save();p.stdin.write(Buffer.concat([Buffer.from(`Content-Length: ${body.length}\r\n\r\n`),body]));}
 async function take(predicate){const deadline=Date.now()+180000;while(Date.now()<deadline){const i=queue.findIndex(predicate);if(i>=0)return queue.splice(i,1)[0];if(ended)throw Error('server ended '+stderr);await new Promise(r=>setTimeout(r,20));}throw Error('response timeout '+stderr);}
 const uri=pathToFileURL(main).href;let version=0;
 async function complete(label,marked,expected,absent=[]){
@@ -59,6 +59,6 @@ try{
  await complete('configuration-change','package '+module+'\nimport o|\nmain():Int64{42}\n',[renamed],[module,'testOrg::cj0993']);
  send('workspace/didChangeConfiguration',{settings:{compilationDatabase:db}});
  await complete('configuration-restored','package '+module+'\nimport t|\nmain():Int64{42}\n',[module],[renamed,'testOrg::cj0993']);
- send('shutdown',{},'stop');assert.equal((await take(x=>x.id==='stop')).result,null);send('exit');p.stdin.end();const r=await closed;assert.equal(r.rc,0);commands.push({label:'installed-stdio',argv:[exe,'--sdk',sdk],started,ended:new Date().toISOString(),...r});
+ send('shutdown',{},'stop');assert.equal((await take(x=>x.id==='stop')).result,null);send('exit');p.stdin.end();const r=await closed;commands.push({label:'installed-stdio',argv:[exe,'--sdk',sdk],started,ended:new Date().toISOString(),...r});save();assert.equal(r.rc,0);
 }finally{clearTimeout(timer);if(!ended)p.kill('SIGTERM');fs.writeFileSync(work+'/server.stderr',stderr);save();}
 process.exitCode=checks.every(x=>x.pass)?0:1;
