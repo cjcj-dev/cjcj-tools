@@ -53,7 +53,7 @@ func checkMutexVisibility(engine: RuleEngine, root: Node): Unit {
     Walker(root, visitPre: { node: Node =>
         if (let Some(variable) <- (node as VarDecl)) {
             if (let Some(ty) <- variable.GetTy()) {
-                if (ty.name != "ReentrantMutex") { return VisitAction.SKIP_CHILDREN }
+                if (!syncMutexType(ty)) { return VisitAction.SKIP_CHILDREN }
             } else { return VisitAction.SKIP_CHILDREN }
             let defaultPackage = variable.fullPackageName == "default"
             if (variable.TestAttr(Attribute.GLOBAL)) {

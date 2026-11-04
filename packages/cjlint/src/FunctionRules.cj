@@ -134,50 +134,68 @@ func checkSingleResponsibility(engine: RuleEngine, file: File): Unit {
     }).Walk()
 }
 
-func eraseReferencedParameters(root: Node, parameters: HashMap<String, FuncParam>): Unit {
+func eraseReferencedParameters(root: Node, parameters: HashMap<String, FuncParam>, uncertain: HashSet<Decl>): Unit {
     Walker(root, visitPre: { node: Node =>
-        if (let Some(reference) <- (node as RefExpr)) { parameters.remove(reference.ref.identifier.GetRawText()) }
+        if (node.IsInvalid() || node.TestAttr(Attribute.IS_BROKEN) || node.TestAttr(Attribute.HAS_BROKEN)) {
+            for ((_, parameter) in parameters) { uncertain.add(parameter) }
+        }
+        if (let Some(reference) <- (node as RefExpr)) {
+            let name = reference.ref.identifier.GetRawText()
+            if (let Some(parameter) <- parameters.get(name)) {
+                if (let Some(target) <- reference.ref.target) {
+                    if (target == parameter) { parameters.remove(name) }
+                } else { uncertain.add(parameter) }
+            }
+        }
+        if (let Some(macroExpr) <- (node as MacroExpandExpr)) {
+            for (arg in macroExpr.invocation.args) {
+                if (arg.kind == TokenKind.IDENTIFIER) {
+                    if (let Some(parameter) <- parameters.get(arg.Value())) { uncertain.add(parameter) }
+                }
+            }
+        }
         return VisitAction.WALK_CHILDREN
     }).Walk()
 }
 
-func checkFunctionParameters(engine: RuleEngine, function: FuncDecl): Unit {
-    if (let Some(body) <- function.funcBody) {
-        let parameters = HashMap<String, FuncParam>()
-        for (list in body.paramLists) {
-            for (parameter in list.params) { parameters[parameter.identifier.Val()] = parameter }
+func checkFunctionParameters(engine: RuleEngine, body: FuncBody): Unit {
+    let parameters = HashMap<String, FuncParam>()
+    let uncertain = HashSet<Decl>()
+    for (list in body.paramLists) {
+        for (parameter in list.params) { parameters[parameter.identifier.Val()] = parameter }
+    }
+    for (list in body.paramLists) {
+        for (parameter in list.params) {
+            if (let Some(value) <- parameter.assignment) { eraseReferencedParameters(value, parameters, uncertain) }
         }
-        for (list in body.paramLists) {
-            for (parameter in list.params) {
-                if (let Some(value) <- parameter.assignment) { eraseReferencedParameters(value, parameters) }
-            }
-        }
-        if (let Some(block) <- body.body) {
-            eraseReferencedParameters(block, parameters)
-            let names = ArrayList<String>()
-            for ((name, _) in parameters) { names.add(name) }
-            let sorted = names.toArray()
-            sort(sorted)
-            for (name in sorted) {
-                if (name != "_") {
-                    let parameter = parameters[name]
-                    engine.findings.add(Finding(engine.path, parameter.identifier.Begin(), parameter.identifier.End(),
-                        "G_FUN_02_unused_param_information", [name]))
-                }
-            }
-            // The reference recursively checks direct nested declarations only.
-            for (item in block.body) {
-                if (let Some(nested) <- (item as FuncDecl)) { checkFunctionParameters(engine, nested) }
+    }
+    if (let Some(block) <- body.body) {
+        eraseReferencedParameters(block, parameters, uncertain)
+        let names = ArrayList<String>()
+        for ((name, _) in parameters) { names.add(name) }
+        let sorted = names.toArray()
+        sort(sorted)
+        for (name in sorted) {
+            if (name != "_" && !uncertain.contains(parameters[name])) {
+                let parameter = parameters[name]
+                engine.findings.add(Finding(engine.path, parameter.identifier.Begin(), parameter.identifier.End(),
+                    "G_FUN_02_unused_param_information", [name]))
             }
         }
     }
 }
 
 func checkUnusedParameters(engine: RuleEngine, file: File): Unit {
+    let checked = HashSet<FuncBody>()
     Walker(file, visitPre: { node: Node =>
+        var body: Option<FuncBody> = None
         if (let Some(function) <- (node as FuncDecl)) {
-            checkFunctionParameters(engine, function)
-            return VisitAction.SKIP_CHILDREN
+            body = function.funcBody
+        } else if (let Some(expression) <- (node as LambdaExpr)) {
+            body = expression.funcBody
+        }
+        if (let Some(value) <- body) {
+            if (!checked.contains(value)) { checked.add(value); checkFunctionParameters(engine, value) }
         }
         return VisitAction.WALK_CHILDREN
     }).Walk()

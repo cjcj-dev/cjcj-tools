@@ -104,6 +104,10 @@ func checkRestrictedSyntax(engine: RuleEngine, root: Node): Unit {
             for (annotation in declaration.annotations) {
                 if (annotation.kind == AstAnnotationKind.WHEN) { emitRestrictedSyntax(engine, selected, declaration, "When"); break }
             }
+        } else if (let Some(specification) <- (node as ImportSpec)) {
+            for (annotation in specification.annotations) {
+                if (annotation.kind == AstAnnotationKind.WHEN) { emitRestrictedSyntax(engine, selected, specification, "When"); break }
+            }
         }
         if (let Some(body) <- (node as FuncBody)) {
             if (let Some(generic) <- body.generic) {

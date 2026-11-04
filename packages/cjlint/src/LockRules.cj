@@ -3,6 +3,14 @@ package cjlint
 import cjcj::ast.*
 import std.collection.*
 
+func syncMutexType(ty: Ty): Bool {
+    if (let Some(declaration) <- Ty.GetDeclPtrOfTy(Some(ty))) {
+        return declaration.fullPackageName == "std.sync" &&
+            ["Mutex", "ReentrantMutex"].contains(declaration.identifier.Val())
+    }
+    return false
+}
+
 func lockVariable(node: Option<Expr>): Option<VarDecl> {
     if (let Some(expression) <- node) {
         if ((expression as RefExpr).isSome() || (expression as MemberAccess).isSome()) {
@@ -13,18 +21,8 @@ func lockVariable(node: Option<Expr>): Option<VarDecl> {
 }
 
 func referenceLockVariable(variable: VarDecl): Bool {
-    if (let Some(ty) <- variable.typeNode) {
-        if (let Some(reference) <- (ty as RefType)) { return reference.ref.identifier == "ReentrantMutex" }
-    }
-    if (let Some(initializer) <- variable.initializer) {
-        if (let Some(call) <- (initializer as CallExpr)) {
-            if (let Some(base) <- call.baseFunc) {
-                if (let Some(reference) <- (base as RefExpr)) { return reference.ref.identifier == "ReentrantMutex" }
-            }
-            return false
-        }
-    }
-    return true
+    if (let Some(ty) <- variable.GetTy()) { return syncMutexType(ty) }
+    return false
 }
 
 class TryLockRecord {
@@ -45,7 +43,7 @@ func checkTryLocks(engine: RuleEngine, root: Node): Unit {
             let key = "${attempt.begin.fileID}:${attempt.begin.line}"
             if (checked.contains(key)) { return VisitAction.SKIP_CHILDREN }
             checked.add(key)
-            let acquired = HashMap<Decl, TryLockRecord>()
+            let acquired = HashMap<String, TryLockRecord>()
             if (let Some(block) <- attempt.tryBlock) {
                 Walker(block, visitPre: { nested: Node =>
                     if (let Some(variable) <- (nested as VarDecl)) {
@@ -54,8 +52,12 @@ func checkTryLocks(engine: RuleEngine, root: Node): Unit {
                     if (let Some(member) <- (nested as MemberAccess)) {
                         if (member.field == "lock") {
                             if (let Some(variable) <- lockVariable(member.baseExpr)) {
-                                if (variables.contains(variable) && !acquired.contains(variable)) {
-                                    acquired[variable] = TryLockRecord(member, variable)
+                                if (let Some(base) <- member.baseExpr) {
+                                    if (let Some(identity) <- lockOrderIdentity(base)) {
+                                        if (variables.contains(variable) && !acquired.contains(identity)) {
+                                            acquired[identity] = TryLockRecord(member, variable)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -71,7 +73,11 @@ func checkTryLocks(engine: RuleEngine, root: Node): Unit {
                     if (let Some(member) <- (nested as MemberAccess)) {
                         if (member.field == "unlock") {
                             if (let Some(variable) <- lockVariable(member.baseExpr)) {
-                                if (let Some(record) <- acquired.get(variable)) { record.released = true }
+                                if (let Some(base) <- member.baseExpr) {
+                                    if (let Some(identity) <- lockOrderIdentity(base)) {
+                                        if (let Some(record) <- acquired.get(identity)) { record.released = true }
+                                    }
+                                }
                             }
                         }
                     }
@@ -115,11 +121,10 @@ class ThreadSafetyCheck {
         if (let Some(base) <- call.baseFunc) {
             if (let Some(member) <- (base as MemberAccess)) {
                 if (let Some(receiver) <- member.baseExpr) {
-                    if (let Some(reference) <- (receiver as RefExpr)) {
-                        if (let Some(target) <- reference.ref.target) {
-                            if (let Some(ty) <- target.GetTy()) {
-                                if (ty.name == "ReentrantMutex") { return if (member.field == "lock") { 1 } else { -1 } }
-                            }
+                    if (let Some(ty) <- receiver.GetTy()) {
+                        if (syncMutexType(ty)) {
+                            if (member.field == "lock") { return 1 }
+                            if (member.field == "unlock") { return -1 }
                         }
                     }
                 }

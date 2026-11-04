@@ -4,6 +4,15 @@ import cjcj::chir.*
 import std.collection.*
 import std.sort.sort
 
+func flowSyncMutexType(ty: Type): Bool {
+    if (let Some(custom) <- (flowBaseType(ty) as CustomType)) {
+        let definition = custom.GetCustomTypeDef()
+        return definition.GetPackageName() == "std.sync" &&
+            ["Mutex", "ReentrantMutex"].contains(definition.GetSrcCodeIdentifier())
+    }
+    return false
+}
+
 class SharedLocation {
     let base: Value; let name: String; let key: String; let location: DebugLocation
     init(base: Value, name: String, path: String, location: DebugLocation) {
@@ -176,7 +185,7 @@ class SpawnMutexCheck {
                 if (let Some(result) <- load.GetResult()) {
                     let users = result.GetUsers(); intermediate = users.size == 1 && users[0] is GetElementRef
                 }
-                if (!intermediate && !value.TestAttr(Attribute.READONLY) && flowTypeName(value.GetType().getOrThrow()) != "ReentrantMutex") {
+                if (!intermediate && !value.TestAttr(Attribute.READONLY) && !flowSyncMutexType(value.GetType().getOrThrow())) {
                     if (let Some(variable) <- target(value)) { access(variable, load.GetDebugLocation(), mutex, false) }
                 }
             }

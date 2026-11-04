@@ -14,7 +14,9 @@ func shadowFunctionKey(function: FuncDecl): Option<String> {
             }
         }
     }
-    return None
+    // Error recovery can leave a function without FuncTy. Keep its name in
+    // the scope, and use the same key when leaving that scope.
+    return Some(function.identifier.GetRawText())
 }
 
 func shadowMembers(node: Node): ArrayList<Node> {
@@ -42,14 +44,17 @@ class ShadowCheck {
     let functions = HashMap<String, ArrayList<Decl>>()
     let deferred = HashMap<String, ArrayList<Decl>>()
     let engine: RuleEngine
+    let reported = HashSet<Decl>()
     init(engine: RuleEngine) { this.engine = engine }
     func report(current: Decl, previous: Decl): Unit {
+        if (current == previous || reported.contains(current)) { return }
+        reported.add(current)
         let name = current.identifier.GetRawText()
         engine.findings.add(Finding(engine.path, current.identifier.Begin(), current.identifier.End(),
             "G_DCL_01_avoid_shadow", [name, previous.identifier.Begin().line.toString(), name, current.identifier.Begin().line.toString()]))
     }
     func enter(node: Node): Unit {
-        if (node.astKind == ASTKind.FILE) { variables.clear(); functions.clear(); deferred.clear() }
+        if (node.astKind == ASTKind.FILE) { variables.clear(); functions.clear(); deferred.clear(); reported.clear() }
         var isStatic = false
         if (let Some(body) <- (node as FuncBody)) {
             if (let Some(function) <- body.funcDecl) { isStatic = function.TestAttr(Attribute.STATIC) }
@@ -58,6 +63,15 @@ class ShadowCheck {
             if (let Some(variable) <- (member as VarDecl)) {
                 if (variable.astKind != ASTKind.VAR_DECL) { continue }
                 let name = variable.identifier.GetRawText()
+                for ((_, candidates) in functions) {
+                    if (!candidates.isEmpty()) {
+                        let previous = candidates[candidates.size - 1]
+                        if (previous.identifier.GetRawText() == name &&
+                            (!isStatic || previous.TestAttr(Attribute.STATIC) || previous.TestAttr(Attribute.GLOBAL))) {
+                            report(variable, previous)
+                        }
+                    }
+                }
                 if (!variables.contains(name)) { variables[name] = ArrayList<Decl>() }
                 if (!deferred.contains(name)) { deferred[name] = ArrayList<Decl>() }
                 let stack = variables[name]
@@ -74,6 +88,13 @@ class ShadowCheck {
                 stack.add(variable)
             } else if (let Some(function) <- (member as FuncDecl)) {
                 if (function.astKind != ASTKind.FUNC_DECL) { continue }
+                if (let Some(stack) <- variables.get(function.identifier.GetRawText())) {
+                    if (!stack.isEmpty()) {
+                        let previous = stack[stack.size - 1]
+                        if (!function.TestAttr(Attribute.STATIC) || previous.TestAttr(Attribute.STATIC) ||
+                            previous.TestAttr(Attribute.GLOBAL)) { report(function, previous) }
+                    }
+                }
                 if (let Some(key) <- shadowFunctionKey(function)) {
                     if (!functions.contains(key)) { functions[key] = ArrayList<Decl>() }
                     let stack = functions[key]

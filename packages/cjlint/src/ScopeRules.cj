@@ -59,7 +59,7 @@ class MinimumScopeCheck {
                 if (let Some(variable) <- (node as VarDecl)) {
                     if (variable.identifier == ".mtx") {
                         if (let Some(ty) <- variable.GetTy()) {
-                            if (ty.name == "ReentrantMutex") { collect(variable.initializer, level: 2); return VisitAction.SKIP_CHILDREN }
+                            if (syncMutexType(ty)) { collect(variable.initializer, level: 2); return VisitAction.SKIP_CHILDREN }
                         }
                     }
                 }

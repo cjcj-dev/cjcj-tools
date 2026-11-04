@@ -5,7 +5,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import {parseArgs} from 'node:util';
 import {spawnSync} from 'node:child_process';
-const {values:v}=parseArgs({options:{prefix:{type:'string'},work:{type:'string'},case:{type:'string'},rules:{type:'string'},'import-path':{type:'string'},'keep-going':{type:'boolean'},'cli-only':{type:'boolean'}}});
+const {values:v}=parseArgs({options:{prefix:{type:'string'},work:{type:'string'},case:{type:'string'},'case-prefix':{type:'string'},rules:{type:'string'},'import-path':{type:'string'},'keep-going':{type:'boolean'},'cli-only':{type:'boolean'}}});
 for(const key of ['prefix','work'])assert.ok(v[key],`--${key} required`);
 const prefix=path.resolve(v.prefix),work=path.resolve(v.work),exe=path.join(prefix,'bin/cjlint');
 fs.mkdirSync(work,{recursive:false});
@@ -26,6 +26,35 @@ function check(name,fn){
   finally{fs.writeFileSync(path.join(work,'assertions.json'),JSON.stringify(assertions,null,2)+'\n');}
 }
 const cases=[
+ {name:'backport-unused-shadow-positive',rule:'G.FUN.02',source:'func api(value: Int64): Unit {\n let action = { value: Int64 => println(value) }\n action(1) }\n',kinds:['G_FUN_02_unused_param_information'],lines:[1]},
+ {name:'backport-unused-lambda-positive',rule:'G.FUN.02',source:'func api(): Unit {\n let action = { unused: Int64 => () }\n action(1) }\n',kinds:['G_FUN_02_unused_param_information'],lines:[2]},
+ {name:'backport-unused-lambda-control',rule:'G.FUN.02',source:'func api(value: Int64): Unit {\n let action = { next: Int64 => println(value + next) }\n action(1) }\n',kinds:[]},
+ {name:'backport-unused-error-control',rule:'G.FUN.02',source:'func broken(value: Int64): Unit { println(value.missing) }\nfunc api(unused: Int64): Unit {}\n',rc:1,kinds:['G_FUN_02_unused_param_information'],lines:[2]},
+ {name:'backport-access-multi-positive',rule:'G.CLS.01',source:'open class Parent { protected open func act(): Unit {} }\nclass Child <: Parent { public func expose(): Unit { println(1)\n if (true) { super.act() }\n println(2) } }\n',kinds:['G_CLS_01_increase_the_accessibility_of_the_function_02']},
+ {name:'backport-access-multi-control',rule:'G.CLS.01',source:'open class Parent { protected open func act(): Unit {} }\nclass Child <: Parent { protected func expose(): Unit { println(1)\n super.act()\n println(2) } }\n',kinds:[]},
+ {name:'backport-access-receiver-control',rule:'G.CLS.01',source:'class Other { public func act(): Unit {} }\nopen class Parent { protected open func act(): Unit {} }\nclass Child <: Parent { public func expose(other: Other): Unit { println(1)\n other.act() } }\n',kinds:[]},
+ {name:'backport-mutex-global-positive',rule:'G.CON.01',source:'import std.sync.Mutex\nlet lock = Mutex()\n',kinds:['G_CON_01_synchronized_object_modifier_information_2']},
+ {name:'backport-mutex-local-control',rule:'G.CON.01',source:'import std.sync.Mutex\nfunc api(): Unit { let lock = Mutex() }\n',kinds:[]},
+ {name:'backport-mutex-name-control',rule:'G.CON.01',source:'class Mutex {}\nlet lock = Mutex()\n',kinds:[]},
+ {name:'backport-mutex-finally-positive',rule:'G.CON.02',source:'import std.sync.Mutex\nfunc api(): Unit { let lock = Mutex()\n try { lock.lock() } finally {} }\n',kinds:['G_CON_02_lock']},
+ {name:'backport-mutex-finally-control',rule:'G.CON.02',source:'import std.sync.Mutex\nfunc api(): Unit { let lock = Mutex()\n try { lock.lock() } finally { lock.unlock() } }\n',kinds:[]},
+ {name:'backport-mutex-member-release-positive',rule:'G.CON.02',source:'import std.sync.Mutex\nclass Box { let lock = Mutex() }\nfunc api(): Unit { let a = Box()\n let b = Box()\n try { a.lock.lock() } finally { b.lock.unlock() } }\n',kinds:['G_CON_02_lock']},
+ {name:'backport-mutex-override-control',rule:'G.CON.03',source:'import std.sync.Mutex\nvar shared: Int64 = 0\nopen class Parent { public open func act(): Unit {} }\nclass Child <: Parent { public override func act(): Unit { let lock = Mutex()\n lock.lock()\n shared = 1\n lock.unlock() } }\n',kinds:[]},
+ {name:'backport-mutex-override-name-positive',rule:'G.CON.03',source:'class Mutex { public func lock(): Unit {} }\nvar shared: Int64 = 0\nopen class Parent { public open func act(): Unit {} }\nclass Child <: Parent { public override func act(): Unit { let lock = Mutex()\n lock.lock()\n shared = 1 } }\n',kinds:['G_CON_03_override_func_thread_safe']},
+ {name:'backport-mutex-spawn-positive',rule:'P.02',source:'import std.sync.Mutex\nlet first = Mutex()\nlet second = Mutex()\nvar shared = 0\nfunc api(): Unit { let task = spawn { synchronized(first) { shared = 1 } }\n let other = spawn { synchronized(second) { shared = 2 } } }\n',kinds:['P_02_diff_mutex']},
+ {name:'backport-mutex-spawn-control',rule:'P.02',source:'import std.sync.Mutex\nlet lock = Mutex()\nvar shared = 0\nfunc api(): Unit { let task = spawn { synchronized(lock) { shared = 1 } }\n let other = spawn { synchronized(lock) { shared = 2 } } }\n',kinds:[]},
+ {name:'backport-shadow-variable-positive',rule:'G.DCL.01',source:'func act(): Unit {}\nfunc api(): Unit { let act = 1 }\n',kinds:['G_DCL_01_avoid_shadow']},
+ {name:'backport-shadow-function-positive',rule:'G.DCL.01',source:'let act = 1\nfunc api(): Unit { func act(): Unit {} }\n',kinds:['G_DCL_01_avoid_shadow']},
+ {name:'backport-shadow-sibling-control',rule:'G.DCL.01',source:'func one(): Unit { let act = 1 }\nfunc two(): Unit { func act(): Unit {} }\n',kinds:[]},
+ {name:'backport-shadow-error-positive',rule:'G.DCL.01',source:'func act(value: Missing): Unit {}\nfunc api(): Unit { func act(value: Missing): Unit {} }\n',rc:1,kinds:['G_DCL_01_avoid_shadow']},
+ {name:'backport-when-import-positive',rule:'G.SYN.01',source:'@When[os == "Linux"]\nimport std.collection.ArrayList\nfunc api(): Unit {}\n',config:{'structural_rule_G_SYN_01.json':{SyntaxKeyword:['When']}},kinds:['G_SYN_01_disable_syntax_information_01']},
+ {name:'backport-when-import-control',rule:'G.SYN.01',source:'import std.collection.ArrayList\nfunc api(): Unit {}\n',config:{'structural_rule_G_SYN_01.json':{SyntaxKeyword:['When']}},kinds:[]},
+ {name:'backport-lock-member-positive',rule:'P.01',source:'package example\nimport std.sync.ReentrantMutex\nclass Box { let lock = ReentrantMutex() }\nlet a = Box()\nlet b = Box()\nfunc one(): Unit { synchronized(a.lock) { synchronized(b.lock) {} } }\nfunc two(): Unit { synchronized(b.lock) { synchronized(a.lock) {} } }\n',kinds:['P_01_dead_lock']},
+ {name:'backport-lock-receiver-control',rule:'P.01',source:'package example\nimport std.sync.ReentrantMutex\nclass Box { let first = ReentrantMutex()\n let second = ReentrantMutex() }\nlet a = Box()\nlet b = Box()\nfunc one(): Unit { synchronized(a.first) { synchronized(a.second) {} } }\nfunc two(): Unit { synchronized(b.second) { synchronized(b.first) {} } }\n',kinds:[]},
+ {name:'backport-lock-reentry-control',rule:'P.01',source:'package example\nimport std.sync.ReentrantMutex\nclass Box { let lock = ReentrantMutex() }\nlet a = Box()\nfunc one(): Unit { synchronized(a.lock) { synchronized(a.lock) {} } }\nfunc two(): Unit { synchronized(a.lock) { synchronized(a.lock) {} } }\n',kinds:[]},
+ {name:'backport-pwd-positive',rule:'G.OTH.02',source:'func api(): Unit { let pwd = "ordinary"\n println(pwd) }\n',kinds:['G_OTH_02_hardcode_sensitivename_information']},
+ {name:'backport-pwd-control',rule:'G.OTH.02',source:'func api(): Unit { let message = "ordinary"\n println(message) }\n',kinds:[]},
+ {name:'backport-pwd-config-control',rule:'G.OTH.02',source:'let pwd = "ordinary"\n',config:{'structural_rule_G_OTH_02.json':{SenInfoName:['secret'],RegexSet:[],WeakPasscode:[]}},kinds:[]},
  {"name": "subpackage-import-positive", "rule": "G.VAR.01", "source": "package example\nimport example.inner.read\nfunc api(): Int64 { read() }\n", "files": {"inner/value.cj": "package example.inner\nvar value = 1\npublic func read(): Int64 { value }\n"}, "reportFile": "inner/value.cj", "kinds": ["G_VAR_01_prefer_immutable_var"]},
  {"name": "subpackage-import-control", "rule": "G.VAR.01", "source": "package example\nimport example.inner.read\nfunc api(): Int64 { read() }\n", "files": {"inner/value.cj": "package example.inner\npublic func read(): Int64 { 1 }\n"}, "reportFile": "inner/value.cj", "kinds": []},
 
@@ -369,6 +398,7 @@ let executed=0;
 for(const c of cases){
   if(v['cli-only']&&!['declaration-positive','declaration-control','function-control','constant-control'].includes(c.name))continue;
   if(v.case&&c.name!==v.case)continue;
+  if(v['case-prefix']&&!c.name.startsWith(v['case-prefix']))continue;
   if(v.rules&&!v.rules.split(',').includes(c.rule))continue;
   executed++;
   const root=path.join(work,c.name),source=path.join(root,'src',c.subdir??'');fs.mkdirSync(source,{recursive:true});
@@ -388,13 +418,14 @@ for(const c of cases){
     if(c.noReport){assert.equal(fs.existsSync(report),false,'early frontend failure must not produce a report');return;}
     const findings=JSON.parse(fs.readFileSync(report,'utf8'));
     assert.deepEqual(findings.map(f=>f.defectType).sort(),c.kinds.slice().sort(),'target rule diagnostics');
+    if(c.lines)assert.deepEqual(findings.map(f=>f.line).sort((a,b)=>a-b),c.lines,'target declaration locations');
     for(const f of findings){
       assert.equal(f.file,path.join(source,c.reportFile??filename));assert.equal(f.analyzerName,'cangjieCodeCheck');
       assert.equal(f.language,'cangjie');assert.ok(f.line>0&&f.column>0);assert.ok(f.description.startsWith(c.rule+':'));
     }
   });
 }
-if(v.case||v.rules){
+if(v.case||v.rules||v['case-prefix']){
   if(v.case)assert.equal(executed,1,'unknown --case');else assert.ok(executed>0,'unknown --rules');
   console.log(JSON.stringify({commands:commands.length,assertions:assertions.length,passed:assertions.filter(x=>x.pass).length}));
   process.exit(assertions.some(x=>!x.pass)?1:0);

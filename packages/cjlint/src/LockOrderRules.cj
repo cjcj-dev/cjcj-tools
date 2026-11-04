@@ -3,6 +3,30 @@ package cjlint
 import cjcj::ast.*
 import std.collection.*
 
+// Resolved declaration identity also distinguishes equal spellings in separate
+// scopes/files. A member lock additionally belongs to a particular receiver.
+func lockOrderIdentity(expression: Expr): Option<String> {
+    if (let Some(paren) <- (expression as ParenExpr)) {
+        if (let Some(inner) <- paren.expr) { return lockOrderIdentity(inner) }
+    }
+    if (let Some(reference) <- (expression as RefExpr)) {
+        if (reference.isThis || reference.isSuper) {
+            if (let Some(owner) <- Ty.GetDeclPtrOfTy(reference.GetTy())) { return Some("this/" + owner.objectId.toString()) }
+        }
+        if (let Some(target) <- reference.ref.target) { return Some(target.objectId.toString()) }
+    } else if (let Some(member) <- (expression as MemberAccess)) {
+        if (let Some(target) <- member.GetTarget()) {
+            if (let Some(base) <- member.baseExpr) {
+                if (let Some(receiver) <- lockOrderIdentity(base)) {
+                    return Some(receiver + "." + target.objectId.toString())
+                }
+            }
+        }
+    }
+    // An unresolved or computed receiver has no reliable static lock identity.
+    return None
+}
+
 class LockSequence {
     let engine: RuleEngine
     let node: SynchronizedExpr
@@ -24,11 +48,7 @@ class LockOrderCheck {
         Walker(node, visitPre: { nested: Node =>
             if (let Some(syncExpr) <- (nested as SynchronizedExpr)) {
                 if (let Some(mutex) <- syncExpr.mutex) {
-                    if (let Some(reference) <- (mutex as RefExpr)) {
-                        var line: Int64 = 0
-                        if (let Some(target) <- reference.ref.target) { line = target.identifier.Begin().line }
-                        sequence.locks.add(reference.ref.identifier.Val() + "/" + line.toString())
-                    }
+                    if (let Some(identity) <- lockOrderIdentity(mutex)) { sequence.locks.add(identity) }
                 }
             }
             return VisitAction.WALK_CHILDREN
@@ -38,7 +58,7 @@ class LockOrderCheck {
     func lambda(engine: RuleEngine, expression: LambdaExpr): Unit {
         if (let Some(body) <- expression.funcBody) {
             if (let Some(block) <- body.body) {
-                let name = "lambda_" + engine.path + "_" + expression.begin.line.toString()
+                let name = "lambda_" + expression.objectId.toString()
                 Walker(block, visitPre: { node: Node =>
                     if (let Some(syncExpr) <- (node as SynchronizedExpr)) {
                         synchronizedBlock(engine, syncExpr, name); return VisitAction.SKIP_CHILDREN
@@ -56,7 +76,7 @@ class LockOrderCheck {
             else if (let Some(parent) <- body.parentStruct) { outer = parent.identifier.Val(); packageName = parent.fullPackageName }
             else if (let Some(parent) <- body.parentEnum) { outer = parent.identifier.Val(); packageName = parent.fullPackageName }
             if (outer.isEmpty() || packageName.isEmpty()) { return }
-            let name = function.identifier.Val() + "_" + packageName + "_" + outer
+            let name = function.objectId.toString()
             Walker(body, visitPre: { node: Node =>
                 if (let Some(expression) <- (node as LambdaExpr)) { lambda(engine, expression); return VisitAction.SKIP_CHILDREN }
                 if (let Some(syncExpr) <- (node as SynchronizedExpr)) {

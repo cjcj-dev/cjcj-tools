@@ -24,20 +24,22 @@ func accessSignature(function: FuncDecl): String {
 }
 
 func exposesParentCall(function: FuncDecl, inherited: HashMap<String, Int64>,
-    parentName: String, childName: String, access: Int64): Bool {
+    parent: ClassDecl, child: ClassDecl, access: Int64): Bool {
+    var exposes = false
     if (let Some(body) <- function.funcBody) {
         if (let Some(block) <- body.body) {
-            if (block.body.size != 1) { return false }
-            if (let Some(call) <- (block.body[0] as CallExpr)) {
-                if (let Some(base) <- call.baseFunc) {
-                    if (let Some(member) <- (base as MemberAccess)) {
-                        if (let Some(target) <- member.GetTarget()) {
-                            if (let Some(called) <- (target as FuncDecl)) {
-                                if (let Some(owner) <- called.outerDecl) {
-                                    if ((owner as ClassDecl).isSome() &&
-                                        (owner.identifier == parentName || owner.identifier == childName)) {
-                                        if (let Some(previous) <- inherited.get(accessSignature(called))) {
-                                            return previous < access
+            Walker(block, visitPre: { node: Node =>
+                if (let Some(call) <- (node as CallExpr)) {
+                    if (let Some(base) <- call.baseFunc) {
+                        if (let Some(member) <- (base as MemberAccess)) {
+                            if (let Some(target) <- member.GetTarget()) {
+                                if (let Some(called) <- (target as FuncDecl)) {
+                                    if (let Some(owner) <- called.outerDecl) {
+                                        if ((owner as ClassDecl).isSome() &&
+                                            (owner == parent || owner == child)) {
+                                            if (let Some(previous) <- inherited.get(accessSignature(called))) {
+                                                if (previous < access) { exposes = true }
+                                            }
                                         }
                                     }
                                 }
@@ -45,14 +47,15 @@ func exposesParentCall(function: FuncDecl, inherited: HashMap<String, Int64>,
                         }
                     }
                 }
-            }
+                return VisitAction.WALK_CHILDREN
+            }).Walk()
         }
     }
-    return false
+    return exposes
 }
 
 func checkChildAccess(engine: RuleEngine, parent: ClassDecl, inherited: HashMap<String, Int64>,
-    parentName: String, visited: HashSet<Decl>): Unit {
+    ancestor: ClassDecl, visited: HashSet<Decl>): Unit {
     for (declaration in parent.subDecls) {
         if (visited.contains(declaration)) { continue }
         visited.add(declaration)
@@ -68,12 +71,12 @@ func checkChildAccess(engine: RuleEngine, parent: ClassDecl, inherited: HashMap<
                         if (previous < access) {
                             engine.emitIdentifier(function, "G_CLS_01_increase_the_accessibility_of_the_function_01")
                         }
-                    } else if (exposesParentCall(function, inherited, parentName, child.identifier.Val(), access)) {
+                    } else if (exposesParentCall(function, inherited, ancestor, child, access)) {
                         engine.emitIdentifier(function, "G_CLS_01_increase_the_accessibility_of_the_function_02")
                     }
                 }
             }
-            checkChildAccess(engine, child, inherited, parent.identifier.Val(), visited)
+            checkChildAccess(engine, child, inherited, ancestor, visited)
         }
     }
 }
@@ -89,7 +92,7 @@ func checkClassAccess(engine: RuleEngine, parent: ClassDecl): Unit {
             }
         }
     }
-    checkChildAccess(engine, parent, inherited, parent.identifier.Val(), HashSet<Decl>())
+    checkChildAccess(engine, parent, inherited, parent, HashSet<Decl>())
 }
 
 func checkOperatorConvention(engine: RuleEngine, function: FuncDecl): Unit {
