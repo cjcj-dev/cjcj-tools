@@ -140,7 +140,7 @@ func eraseReferencedParameters(root: Node, parameters: HashMap<String, FuncParam
             for ((_, parameter) in parameters) { uncertain.add(parameter) }
         }
         if (let Some(reference) <- (node as RefExpr)) {
-            let name = reference.ref.identifier.GetRawText()
+            let name = reference.ref.identifier.Val()
             if (let Some(parameter) <- parameters.get(name)) {
                 if (let Some(target) <- reference.ref.target) {
                     if (target == parameter) { parameters.remove(name) }
@@ -186,7 +186,7 @@ func checkFunctionParameters(engine: RuleEngine, body: FuncBody): Unit {
 }
 
 func checkUnusedParameters(engine: RuleEngine, file: File): Unit {
-    let checked = HashSet<FuncBody>()
+    let checked = HashSet<Node>()
     Walker(file, visitPre: { node: Node =>
         var body: Option<FuncBody> = None
         if (let Some(function) <- (node as FuncDecl)) {

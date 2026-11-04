@@ -25,7 +25,7 @@ func accessSignature(function: FuncDecl): String {
 
 func exposesParentCall(function: FuncDecl, inherited: HashMap<String, Int64>,
     parent: ClassDecl, child: ClassDecl, access: Int64): Bool {
-    var exposes = false
+    let exposingCalls = HashSet<Node>()
     if (let Some(body) <- function.funcBody) {
         if (let Some(block) <- body.body) {
             Walker(block, visitPre: { node: Node =>
@@ -38,7 +38,7 @@ func exposesParentCall(function: FuncDecl, inherited: HashMap<String, Int64>,
                                         if ((owner as ClassDecl).isSome() &&
                                             (owner == parent || owner == child)) {
                                             if (let Some(previous) <- inherited.get(accessSignature(called))) {
-                                                if (previous < access) { exposes = true }
+                                                if (previous < access) { exposingCalls.add(call) }
                                             }
                                         }
                                     }
@@ -51,7 +51,7 @@ func exposesParentCall(function: FuncDecl, inherited: HashMap<String, Int64>,
             }).Walk()
         }
     }
-    return exposes
+    return !exposingCalls.isEmpty()
 }
 
 func checkChildAccess(engine: RuleEngine, parent: ClassDecl, inherited: HashMap<String, Int64>,
