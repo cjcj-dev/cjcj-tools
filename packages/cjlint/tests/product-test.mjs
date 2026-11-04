@@ -26,6 +26,9 @@ function check(name,fn){
   finally{fs.writeFileSync(path.join(work,'assertions.json'),JSON.stringify(assertions,null,2)+'\n');}
 }
 const cases=[
+ {name:'t07-fallback-unresolved-positive',rule:'G.DCL.01',source:'func api(): Unit {\n missing({ =>\n  func act(): Unit {}\n  if (true) {\n   func act(): Unit {}\n  }\n })\n}\n',rc:1,error:'undeclared identifier',kinds:['G_DCL_01_avoid_shadow'],lines:[5]},
+ {name:'t07-fallback-unresolved-control',rule:'G.DCL.01',source:'func api(): Unit {\n missing({ =>\n  if (true) { func act(): Unit {} }\n  if (true) { func act(): Unit {} }\n })\n}\n',rc:1,error:'undeclared identifier',kinds:[]},
+ {name:'t07-fallback-typed-control',rule:'G.DCL.01',source:'func consume(action: () -> Unit): Unit {}\nfunc api(): Unit {\n consume({ =>\n  func act(): Unit {}\n  if (true) {\n   func act(): Unit {}\n  }\n })\n}\n',kinds:['G_DCL_01_avoid_shadow'],lines:[6]},
  {name:'backport-unused-shadow-positive',rule:'G.FUN.02',source:'func api(value: Int64): Unit {\n let action = { value: Int64 => println(value) }\n action(1) }\n',kinds:['G_FUN_02_unused_param_information'],lines:[1]},
  {name:'backport-unused-lambda-positive',rule:'G.FUN.02',source:'func api(): Unit {\n let action = { unused: Int64 => () }\n action(1) }\n',kinds:['G_FUN_02_unused_param_information'],lines:[2]},
  {name:'backport-unused-lambda-control',rule:'G.FUN.02',source:'func api(value: Int64): Unit {\n let action = { next: Int64 => println(value + next) }\n action(1) }\n',kinds:[]},
