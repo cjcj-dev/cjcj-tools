@@ -111,6 +111,7 @@ class CompletionRequest {
                 }
                 if (prefix.isEmpty() || !candidates.isEmpty()) {
                     probe.compiler.DestroyASTResources()
+                    probe.compiler.JoinDestroyASTResources()
                     let items = ArrayList<JsonValue>()
                     let sorted = candidates.toArray(); sort(sorted)
                     for (name in sorted where name.startsWith(span.prefix)) {
@@ -127,7 +128,7 @@ class CompletionRequest {
         }
         let outsideError = probe.CompletionExternalError(marker, span.first)
         let discovered = try { probe.CompletionNames(marker, span.first, "") }
-            finally { probe.compiler.DestroyASTResources() }
+            finally { probe.compiler.DestroyASTResources(); probe.compiler.JoinDestroyASTResources() }
         // Try actual prefix candidates first. A successful normal SEMA repairs
         // propagated hole errors as well. Only seek a nonmatching empty-result
         // witness when the probe has no diagnostic outside the request token.
@@ -161,7 +162,7 @@ class CompletionRequest {
                 items.add(object([("label", JsonString(name.name)), ("detail", JsonString(hover.getOrThrow().text)),
                     ("textEdit", object([("range", rangeJson(ProtocolPositionAt(original.text, span.first), ProtocolPositionAt(original.text, span.last))),
                         ("newText", JsonString(name.name))]))]))
-            } finally { semantic.compiler.DestroyASTResources() }
+            } finally { semantic.compiler.DestroyASTResources(); semantic.compiler.JoinDestroyASTResources() }
         }
         // No successful repair is distinguishable from a valid empty name set
         // only after a semantic witness. Never hide unrelated compilation errors.
