@@ -11,20 +11,16 @@ class Layout {
     let syntax: Syntax
     let options: Options
     let mates = HashMap<Int64, Int64>()
-    let breakDots = HashSet<Int64>()
+    let chains = HashMap<Int64, (Int64, Array<Int64>)>()
     init(syntax: Syntax, options: Options) {
         this.syntax = syntax; this.options = options
-        let widths = Array<Int64>(syntax.tokens.size + 1, repeat: 0)
-        for (i in 0..syntax.tokens.size) { widths[i + 1] = widths[i] + Unicode.DisplayWidth(syntax.tokens[i].text) }
         for ((chain, chainEnd) in syntax.chains) {
             if (chain.size < 2) { continue }
             let root = chain[chain.size - 1]
             let begin = sourceOffset(syntax.source, root.begin)
             let end = sourceOffset(syntax.source, chainEnd)
-            let length = widths[tokenAt(end)] - widths[tokenAt(begin)]
-            if ((options.methodChain && chain.size >= options.chainLevel) ||
-                (options.chainOverLength && length + options.indentWidth > options.lineLength)) {
-                for (member in chain) { breakDots.add(sourceOffset(syntax.source, member.dotPos)) }
+            if (end > (chains.get(begin) ?? (begin, []))[0]) {
+                chains[begin] = (end, chain.map { member => sourceOffset(syntax.source, member.dotPos) })
             }
         }
         let stack = ArrayList<Int64>()
@@ -138,7 +134,6 @@ class Layout {
         if (previous < 0) { return text("") }
         let left = syntax.tokens[previous]; let right = syntax.tokens[current]
         let a = left.text; let b = right.text
-        if (breakDots.contains(right.first)) { return nest(hard(), options.indentWidth) }
         let gap = syntax.source.buffer[left.last..right.first]
         let lines = right.token.Begin().line - left.token.End().line
         let lineBreak = lines > 0 || gap.contains("\n") || gap.contains("\r")
@@ -191,6 +186,25 @@ class Layout {
         var previous: Int64 = -1
         while (i < last) {
             let t = syntax.tokens[i]
+            if (t.first != skipGroup) {
+                if (let Some(chain) <- chains.get(t.first)) {
+                    let stop = tokenAt(chain[0])
+                    if (stop > i && stop <= last) {
+                        let segments = ArrayList<Doc>()
+                        var begin = i
+                        for (dot in chain[1]) {
+                            let end = tokenAt(dot)
+                            segments.add(sequence(begin, end, inList, skipGroup: t.first)); begin = end
+                        }
+                        segments.add(sequence(begin, stop, inList, skipGroup: t.first))
+                        let mode = if (options.methodChain && chain[1].size >= options.chainLevel) { "force" }
+                            else if (options.chainOverLength) { "auto" } else { "flat" }
+                        docs.add(separator(previous, i, inList))
+                        docs.add(Doc(8, children: segments.toArray(), amount: options.indentWidth, value: mode))
+                        previous = stop - 1; i = stop; continue
+                    }
+                }
+            }
             if (t.first != skipGroup) {
                 if (let Some(end) <- syntax.assignments.get(t.first)) {
                     let stop = tokenAt(end)

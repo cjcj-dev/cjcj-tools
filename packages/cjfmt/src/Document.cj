@@ -30,7 +30,7 @@ func flattenLines(doc: Doc): Doc {
     let children = ArrayList<Doc>()
     if (doc.kind == 7) { children.add(text(" ")) }
     for (child in doc.children) { children.add(flattenLines(child)) }
-    return Doc(if (doc.kind == 7) { 1 } else { doc.kind }, value: doc.value, children: children.toArray(), amount: doc.amount)
+    return Doc(if (doc.kind == 7 || doc.kind == 8) { 1 } else { doc.kind }, value: doc.value, children: children.toArray(), amount: doc.amount)
 }
 func spaces(count: Int64): String {
     return String.fromUtf8(Array<UInt8>(if (count > 0) { count } else { 0 }, repeat: b' '))
@@ -232,6 +232,23 @@ class Renderer {
                     breakLine(indent + doc.amount)
                 } else { append(" ") }
                 render(doc.children[0], indent + doc.amount, false, suffix: suffix)
+            case 8 =>
+                // Render the complete receiver first. Calls and lambdas may
+                // change its final column, so source token widths cannot decide
+                // the continuation layout of the following member chain.
+                render(doc.children[0], indent, flat)
+                let rest = ArrayList<Doc>()
+                for (i in 1..doc.children.size) { rest.add(doc.children[i]) }
+                let current = if (lineStart) { pendingIndent } else { column }
+                let expand = !flat && (doc.value == "force" || (doc.value == "auto" &&
+                    current + flatSize(concat(rest), width) + inlineWidth(suffix) > width))
+                for (i in 1..doc.children.size) {
+                    if (expand) { breakLine(indent + doc.amount) }
+                    let tail = ArrayList<Doc>()
+                    if (!expand) { for (j in i + 1..doc.children.size) { tail.add(doc.children[j]) } }
+                    tail.add(all: suffix)
+                    render(doc.children[i], indent + if (expand) { doc.amount } else { 0 }, flat, suffix: tail.toArray())
+                }
             case _ => ()
         }
     }
