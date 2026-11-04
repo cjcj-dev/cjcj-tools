@@ -13,6 +13,45 @@ func flowSyncMutexType(ty: Type): Bool {
     return false
 }
 
+func flowSyncLockType(ty: Type): Bool {
+    if (flowSyncMutexType(ty)) { return true }
+    if (let Some(custom) <- (flowBaseType(ty) as CustomType)) {
+        let definition = custom.GetCustomTypeDef()
+        return definition.GetPackageName() == "std.sync" && definition.GetSrcCodeIdentifier() == "Lock"
+    }
+    return false
+}
+
+func flowSyncLockCall(expression: Expression): Option<(String, Value)> {
+    if (let Some(invoke) <- (expression as Invoke)) {
+        let signature = invoke.GetMethodType(); let params = signature.GetParamTypes()
+        if (params.size == 1 && flowSyncLockType(params[0]) && flowTypeName(signature.GetReturnType()) == "Unit") {
+            return (invoke.GetMethodName(), invoke.GetObject())
+        }
+    } else if (let Some(invoke) <- (expression as TryInvoke)) {
+        let signature = invoke.GetMethodType(); let params = signature.GetParamTypes()
+        if (params.size == 1 && flowSyncLockType(params[0]) && flowTypeName(signature.GetReturnType()) == "Unit") {
+            return (invoke.GetMethodName(), invoke.GetObject())
+        }
+    } else if (let Some((callee, args)) <- flowCall(expression)) {
+        // Final Mutex methods are direct calls, while the Lock interface uses
+        // dynamic dispatch. Both carry the resolved std.sync declaration.
+        if (let Some(function) <- (callee as Function)) {
+            if (function.GetPackageName() == "std.sync" && args.size == 1) {
+                if (let Some(owner) <- function.GetParentCustomTypeDef()) {
+                    if (owner.GetPackageName() == "std.sync" &&
+                        ["Lock", "Mutex", "ReentrantMutex"].contains(owner.GetSrcCodeIdentifier())) {
+                        if (flowTypeName(function.GetReturnType().getOrThrow()) == "Unit") {
+                            return (function.GetSrcCodeIdentifier(), args[0])
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return None
+}
+
 class SharedLocation {
     let base: Value; let name: String; let key: String; let location: DebugLocation
     init(base: Value, name: String, path: String, location: DebugLocation) {
@@ -163,13 +202,12 @@ class SpawnMutexCheck {
         if (seen.contains(state)) { return }; seen.add(state)
         var mutex = incoming
         for (expression in block.GetExpressions()) {
-            if (let Some(invoke) <- (expression as Invoke)) {
-                let methodType = invoke.GetMethodType(); let params = methodType.GetParamTypes()
-                if (params.size == 1 && flowTypeName(params[0]) == "Lock" && flowTypeName(methodType.GetReturnType()) == "Unit") {
-                    if (invoke.GetMethodName() == "lock") {
-                        let (base, name, path, location) = sharedBase(invoke.GetObject())
-                        mutex = SharedLocation(base, name, path, location)
-                    } else if (invoke.GetMethodName() == "unlock") { mutex = None }
+            if (let Some((method, receiver)) <- flowSyncLockCall(expression)) {
+                let (base, name, path, location) = sharedBase(receiver)
+                let lock = SharedLocation(base, name, path, location)
+                if (method == "lock") { mutex = lock }
+                else if (method == "unlock") {
+                    if (let Some(current) <- mutex) { if (current.key == lock.key) { mutex = None } }
                 }
             }
             if (let Some(store) <- (expression as Store)) {

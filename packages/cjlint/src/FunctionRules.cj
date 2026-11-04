@@ -139,6 +139,13 @@ func eraseReferencedParameters(root: Node, parameters: HashMap<String, FuncParam
         if (node.IsInvalid() || node.TestAttr(Attribute.IS_BROKEN) || node.TestAttr(Attribute.HAS_BROKEN)) {
             for ((_, parameter) in parameters) { uncertain.add(parameter) }
         }
+        // This frontend also represents semantic recovery with an invalid Ty
+        // on an otherwise ordinary expression (for example an unresolved call).
+        if ((node as Expr).isSome()) {
+            if (let Some(ty) <- node.GetTy()) {
+                if (ty.IsInvalid()) { for ((_, parameter) in parameters) { uncertain.add(parameter) } }
+            }
+        }
         if (let Some(reference) <- (node as RefExpr)) {
             let name = reference.ref.identifier.Val()
             if (let Some(parameter) <- parameters.get(name)) {
