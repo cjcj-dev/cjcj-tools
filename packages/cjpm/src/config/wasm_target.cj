@@ -55,21 +55,40 @@ public func wasmUnsupportedFeatureMessage(feature: String): String {
     "Error: ${feature} is not supported for the wasm32-wasi target (${WASM_WASI_TARGET})"
 }
 
-// `[target.wasm32-wasi]` and the other aliases name the canonical target; re-key them so that
-// every lookup by crossCompileTarget (always canonical) finds the user's section.
-public func canonicalizeWasmTargetKeys(targetConfigMap: HashMap<String, TargetConfig>): Unit {
-    let aliasKeys = ArrayList<String>()
+// Every `[target.<spelling>]` section that names the wasm32-wasi target, canonical or alias.
+public func wasmTargetSections(targetConfigMap: HashMap<String, TargetConfig>): ArrayList<String> {
+    let keys = ArrayList<String>()
     for ((targetName, _) in targetConfigMap) {
-        if (isWasmTarget(targetName) && targetName != WASM_WASI_TARGET) {
-            aliasKeys.add(targetName)
+        if (isWasmTarget(targetName)) {
+            keys.add(targetName)
         }
     }
-    for (alias in aliasKeys) {
-        let config = targetConfigMap.remove(alias)
-        if (targetConfigMap.contains(WASM_WASI_TARGET)) {
-            eprintln("Warning: '[target.${alias}]' is ignored because '[target.${WASM_WASI_TARGET}]' is also present")
-        } else if (let Some(c) <- config) {
-            targetConfigMap.add(WASM_WASI_TARGET, c)
-        }
+    keys
+}
+
+// `[target.wasm32-wasi]` and the other aliases name the canonical target; a single such section is
+// re-keyed so that every lookup by crossCompileTarget (always canonical) finds it. Two or more spellings
+// are left as they are and rejected by checkWasmTargetSections (no silent, map-order-dependent pick).
+public func canonicalizeWasmTargetKeys(targetConfigMap: HashMap<String, TargetConfig>): Unit {
+    let keys = wasmTargetSections(targetConfigMap)
+    if (keys.size != 1 || keys[0] == WASM_WASI_TARGET) {
+        return
     }
+    if (let Some(config) <- targetConfigMap.remove(keys[0])) {
+        targetConfigMap.add(WASM_WASI_TARGET, config)
+    }
+}
+
+public func checkWasmTargetSections(targetConfigMap: HashMap<String, TargetConfig>, configFilePath: String): Bool {
+    let keys = wasmTargetSections(targetConfigMap)
+    if (keys.size <= 1) {
+        return true
+    }
+    let names = ArrayList<String>()
+    for (key in keys) {
+        names.add("[target.${key}]")
+    }
+    eprintln("Error: ${String.join(names.toArray(), delimiter: ", ")} in ${configFilePath} all configure " +
+        "${WASM_WASI_TARGET}; keep exactly one of these sections")
+    return false
 }

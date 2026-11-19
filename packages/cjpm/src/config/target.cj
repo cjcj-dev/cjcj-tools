@@ -266,6 +266,9 @@ func mergeTargetConfig(path: String, oriInfo: TargetInfo, targetConfigMap: HashM
 
 public func verifyTargetConfig(targetConfigMap: HashMap<String, TargetConfig>, path: String, configFilePath: String,
     isTest!: Bool = false): Bool {
+    if (isWasmCrossCompile() && !checkWasmTargetSections(targetConfigMap, configFilePath)) {
+        return false
+    }
     if (targetConfigMap.contains(targetConfigName) && (!verifyTargetInfo(
         targetConfigMap[targetConfigName].commonTargetInfo, path, configFilePath, isTest) ||
         !verifyTargetInfo(targetConfigMap[targetConfigName].debugTargetInfo, path, configFilePath, isTest) ||

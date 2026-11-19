@@ -76,8 +76,8 @@ public func doTest(unparseArgs: Array<String>, testConfig: TestConfig): Bool {
     if (testConfig.isCrossCompile && isWasmCrossCompile()) {
         let unittestCjo = wasmStdModulePath("std.unittest") ?? ""
         if (unittestCjo.isEmpty() || !fileExists(unittestCjo)) {
-            eprintln("Error: 'cjpm test' for ${crossCompileTarget} needs std.unittest built for wasm32-wasi, " +
-                "which this SDK does not provide (missing ${unittestCjo}); unit tests on wasm32-wasi are not supported yet")
+            eprintln("Error: running unit tests or benchmarks for ${crossCompileTarget} needs std.unittest built for wasm32-wasi, " +
+                "which this SDK does not provide (missing ${unittestCjo}); 'cjpm test' and 'cjpm bench' are not supported on wasm32-wasi yet")
             return false
         }
     }
