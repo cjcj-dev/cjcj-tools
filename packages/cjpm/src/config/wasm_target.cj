@@ -73,21 +73,3 @@ public func canonicalizeWasmTargetKeys(targetConfigMap: HashMap<String, TargetCo
         }
     }
 }
-
-// wasm32-wasi has no dynamic linking: dynamic library products are rejected (macro packages are
-// built for the host and are not affected).
-public func checkWasmOutputTypes(tomlInfo: TomlInfo, path: String): Bool {
-    if (tomlInfo.pkg.outputType == Dynamic) {
-        eprintln(wasmUnsupportedFeatureMessage(
-            "'output-type = \"dynamic\"' of module '${tomlInfo.pkg.name}' (${getPath(path, CONFIG_FILE_NAME)})"))
-        return false
-    }
-    for ((pkgName, pkgConfig) in tomlInfo.pkg.packageConfiguration) {
-        if (pkgConfig.outputType == Dynamic) {
-            eprintln(wasmUnsupportedFeatureMessage(
-                "'output-type = \"dynamic\"' of package '${pkgName}' (${getPath(path, CONFIG_FILE_NAME)})"))
-            return false
-        }
-    }
-    return true
-}

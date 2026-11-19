@@ -67,7 +67,21 @@ func findNodeOnPath(): ?String {
     return None
 }
 
-// node: $CJPM_WASM_NODE, else the SDK's $CANGJIE_HOME/tools/bin/node, else `node` on PATH.
+// SDK root: CANGJIE_HOME, else the directory above the cjc in use (as config/history.cj does).
+public func resolveCangjieHome(): ?String {
+    if (let Some(home) <- getVariable("CANGJIE_HOME")) {
+        if (!home.isEmpty()) {
+            return Some(home)
+        }
+    }
+    let cjcBinDir = Path(state.cjcPath).parent
+    if (cjcBinDir.isEmpty()) {
+        return None
+    }
+    return FileInfo(cjcBinDir).parentDirectory?.path.toString()
+}
+
+// node: $CJPM_WASM_NODE, else the SDK's <CANGJIE_HOME>/tools/bin/node, else `node` on PATH.
 public func resolveWasmNode(): ?String {
     if (let Some(node) <- getVariable("CJPM_WASM_NODE")) {
         if (!fileExists(node)) {
@@ -76,7 +90,7 @@ public func resolveWasmNode(): ?String {
         }
         return Some(node)
     }
-    if (let Some(home) <- getVariable("CANGJIE_HOME")) {
+    if (let Some(home) <- resolveCangjieHome()) {
         let sdkNode = Path(home).join("tools").join("bin").join("node").toString()
         if (fileExists(sdkNode)) {
             return Some(sdkNode)
@@ -110,6 +124,6 @@ public func resolveWasmRunner(scratchDir: String): ?WasmRunner {
 
 // SDK layout probe: <CANGJIE_HOME>/modules/wasi_wasm32_cjnative/std/<module>.cjo
 public func wasmStdModulePath(module: String): ?String {
-    let home = getVariable("CANGJIE_HOME") ?? return None
+    let home = resolveCangjieHome() ?? return None
     Some(Path(home).join("modules").join("wasi_wasm32_cjnative").join("std").join("${module}.cjo").toString())
 }

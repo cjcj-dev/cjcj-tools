@@ -485,9 +485,6 @@ class DepModel {
         if (!crossCompileTarget.isEmpty() && !this.buildCheckCrossFFi(tomlInfo)) {
             return FAILED_BUILD_CHECK_RESULT
         }
-        if (isWasmCrossCompile() && !checkWasmOutputTypes(tomlInfo, path)) {
-            return FAILED_BUILD_CHECK_RESULT
-        }
 
         let cjmpModuleInfo = verifiedModuleMap[tomlInfo.pkg.name]
         var deducer = FeatureDeducer(enabled: !this.globalConfig.noFeatureDeduce)
