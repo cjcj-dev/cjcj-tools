@@ -72,6 +72,22 @@ run('reject-dynamic-library', 'app', [cjpm, 'build', '--target', 'wasm32-wasi'],
 fs.writeFileSync(libToml, libOriginal);
 run('runtime-exception-explicit', 'athrow', [cjpm, 'run', '--target', 'wasm32-wasi'], {expectRc: 1, expect: /throwing an exception/});
 run('runtime-exception-status', 'athrow', [node, '--no-warnings', `${REL}/cjpm-wasi-runner.mjs`, `${REL}/bin/main.wasm`], {expectRc: 134, expect: /throwing an exception/});
+// workspace: members build into one target dir; like native workspaces, `run` needs --name.
+write(path.join(work, 'ws', 'cjpm.toml'), '[workspace]\n  members = ["app", "mathlib"]\n');
+for (const m of ['app', 'mathlib']) fs.cpSync(path.join(work, m), path.join(work, 'ws', m), {recursive: true, filter: f => !f.includes(`${path.sep}target`)});
+fs.writeFileSync(path.join(work, 'ws', 'app', 'cjpm.toml'), fs.readFileSync(path.join(work, 'app', 'cjpm.toml'), 'utf8'));
+run('workspace-build', 'ws', [cjpm, 'build', '--target', 'wasm32-wasi'], {expectRc: 0, expect: /cjpm build success/});
+fileCase('workspace-artifact-app.wasm', path.join(work, 'ws', REL, 'bin/app.wasm'), '0061736d');
+run('workspace-run-name', 'ws', [cjpm, 'run', '--target', 'wasm32-wasi', '--skip-build', '--name', 'app'], {expectRc: 1, expect: /fib\(10\)=55 fib\(9\)=34/});
+// build.cj is compiled for the host with --cfg target=<canonical triple>.
+fs.cpSync(path.join(work, 'zero'), path.join(work, 'scripted'), {recursive: true, filter: f => !f.includes(`${path.sep}target`)});
+write(path.join(work, 'scripted', 'build.cj'), 'import std.fs.*\nimport std.process.Process\n\n@When[target == "wasm32-unknown-wasi"]\nfunc which(): String { "wasm32-unknown-wasi" }\n\n@When[target != "wasm32-unknown-wasi"]\nfunc which(): String { "other" }\n\nfunc stagePreBuild(): Int64 {\n    File.writeTo("script-target.txt", which().toArray())\n    0\n}\n\nmain(): Int64 {\n    match (Process.current.arguments[0]) {\n        case "pre-build" => stagePreBuild()\n        case _ => 0\n    }\n}\n');
+fs.writeFileSync(path.join(work, 'scripted', 'cjpm.toml'), fs.readFileSync(path.join(work, 'zero', 'cjpm.toml'), 'utf8').replace('name = "zero"', 'name = "scripted"'));
+fs.writeFileSync(path.join(work, 'scripted', 'src', 'main.cj'), fs.readFileSync(path.join(work, 'zero', 'src', 'main.cj'), 'utf8').replace('package zero', 'package scripted'));
+run('build-script-run', 'scripted', [cjpm, 'run', '--target', 'wasm32-wasi'], {expectRc: 0, expect: /cjpm run finished/});
+const marker = path.join(work, 'scripted', 'script-target.txt');
+const seen = fs.existsSync(marker) ? fs.readFileSync(marker, 'utf8') : 'MISSING';
+results.push({name: 'build-script-sees-canonical-target', rc: seen === 'wasm32-unknown-wasi' ? 0 : 1, expectRc: 0, expect: 'script-target.txt == wasm32-unknown-wasi', pass: seen === 'wasm32-unknown-wasi', tail: seen});
 run('BLOCKED-macro-consumer-needs-wasm-std.ast', 'appm', [cjpm, 'build', '-V', '--target', 'wasm32-wasi'], {expectRc: 1,
   expect: /(?=[\s\S]*Compiling package .twice.:(?:(?!--target)[^\n])*--compile-macro)(?=[\s\S]*Compiling package .appm.:[^\n]*--target=wasm32-unknown-wasi)[\s\S]*can not find package .std\.ast./});
 
