@@ -45,12 +45,18 @@ try {
 exit(rc ?? 0);
 """
 
+public let WASM_NODE_FLAGS: Array<String> = ["--no-warnings", "--no-turbo-fast-api-calls"]
+
 public class WasmRunner {
     public WasmRunner(public let node: String, public let script: String) {}
 
     // (command, arguments) that run `module` with `moduleArgs` under node:wasi.
+    // --no-turbo-fast-api-calls: on node 20/22 a V8 GC entered from the WASI fd_write fast-API callback can SIGSEGV
+    // (rc 139, buffered stdout lost) once a module has grown a large linear memory; the flag keeps the runner exit contract.
     public func command(module: String, moduleArgs: Collection<String>): (String, Array<String>) {
-        let args = ArrayList<String>(["--no-warnings", script, module])
+        let args = ArrayList<String>(WASM_NODE_FLAGS)
+        args.add(script)
+        args.add(module)
         args.add(all: moduleArgs)
         (node, args.toArray())
     }

@@ -15,6 +15,8 @@ const home = process.env.CANGJIE_HOME;
 assert(home && fs.existsSync(path.join(home, 'modules/wasi_wasm32_cjnative/std/std.core.cjo')), 'CANGJIE_HOME must be a wasm32-wasi SDK');
 const node = path.join(home, 'tools/bin/node');
 const REL = 'target/wasm32-unknown-wasi/release';
+// node flags cjpm passes to the runner (WasmRunner.command); direct-runner cases use the same set.
+const NODE_FLAGS = ['--no-warnings', '--no-turbo-fast-api-calls'];
 
 function write(file, text) { fs.mkdirSync(path.dirname(file), {recursive: true}); fs.writeFileSync(file, text); }
 function module(name, type, deps, file, src) {
@@ -47,7 +49,7 @@ fileCase('artifact-main.wasm', path.join(work, 'app', REL, 'bin/main.wasm'), '00
 fileCase('artifact-libmathlib.a', path.join(work, 'app', REL, 'mathlib/libmathlib.a'), '213c6172');
 const first = sha(path.join(work, 'app', REL, 'bin/main.wasm'));
 run('run-nonzero-like-native', 'app', [cjpm, 'run', '--target', 'wasm32-wasi', '--skip-build'], {expectRc: 1, expect: /fib\(10\)=55 fib\(9\)=34/});
-run('runner-exact-status', 'app', [node, '--no-warnings', `${REL}/cjpm-wasi-runner.mjs`, `${REL}/bin/main.wasm`], {expectRc: 29, expect: /fib\(10\)=55/});
+run('runner-exact-status', 'app', [node, ...NODE_FLAGS, `${REL}/cjpm-wasi-runner.mjs`, `${REL}/bin/main.wasm`], {expectRc: 29, expect: /fib\(10\)=55/});
 run('run-zero', 'zero', [cjpm, 'run', '--target', 'wasm32-wasi'], {expectRc: 0, expect: /cjpm run finished/});
 for (const alias of ['wasm32-wasip1', 'wasm32-unknown-wasi', 'wasm32-unknown-wasip1']) {
   fs.rmSync(path.join(work, 'app', 'target'), {recursive: true, force: true});
@@ -64,6 +66,13 @@ run('bench-needs-wasm-std.unittest', 'app', [cjpm, 'bench', '--target', 'wasm32-
 run('build-target-dir', 'app', [cjpm, 'build', '--target', 'wasm32-wasi', '--target-dir', path.join(work, 'tdir')], {expectRc: 0, expect: /cjpm build success/});
 fileCase('target-dir-artifact', path.join(work, 'tdir', 'wasm32-unknown-wasi/release/bin/main.wasm'), '0061736d');
 run('run-missing-node-override', 'app', [cjpm, 'run', '--target', 'wasm32-wasi', '--skip-build'], {env: {CJPM_WASM_NODE: '/nonexistent/node'}, expectRc: 1, expect: /CJPM_WASM_NODE='\/nonexistent\/node' does not exist/});
+// cjpm runs node with --no-turbo-fast-api-calls (V8 SIGSEGV in the WASI fd_write fast API on large memories); a shim records argv.
+const shim = path.join(work, 'node-shim.sh'), argvLog = path.join(work, 'node-shim.argv');
+write(shim, `#!/bin/sh\nprintf '%s\\n' "$@" > '${argvLog}'\nexec '${node}' "$@"\n`); fs.chmodSync(shim, 0o755);
+run('run-node-flags', 'app', [cjpm, 'run', '--target', 'wasm32-wasi', '--skip-build'], {env: {CJPM_WASM_NODE: shim}, expectRc: 1, expect: /fib\(10\)=55 fib\(9\)=34/});
+const argv = fs.existsSync(argvLog) ? fs.readFileSync(argvLog, 'utf8').split('\n') : [];
+const flagsOk = NODE_FLAGS.every((f, i) => argv[i] === f) && /cjpm-wasi-runner\.mjs$/.test(argv[NODE_FLAGS.length] ?? '');
+results.push({name: 'run-node-argv-fast-api-off', rc: flagsOk ? 0 : 1, expectRc: 0, expect: `argv starts ${NODE_FLAGS.join(' ')} <runner.mjs>`, pass: flagsOk, tail: argv.slice(0, 4).join(' ')});
 const toml = path.join(work, 'app', 'cjpm.toml'), original = fs.readFileSync(toml, 'utf8');
 const withToml = (extra, fn) => { fs.writeFileSync(toml, original + extra); try { fn(); } finally { fs.writeFileSync(toml, original); } };
 withToml('\n[profile.build]\n  lto = "full"\n', () => run('reject-lto', 'app', [cjpm, 'build', '--target', 'wasm32-wasi'], {expectRc: 1, expect: /profile\.build\.lto' \(LTO\) is not supported/}));
@@ -78,7 +87,7 @@ fs.writeFileSync(libToml, libOriginal.replace('output-type = "static"', 'output-
 run('reject-dynamic-library', 'app', [cjpm, 'build', '--target', 'wasm32-wasi'], {expectRc: 1, expect: /package 'mathlib' \(no dynamic libraries\) is not supported/});
 fs.writeFileSync(libToml, libOriginal);
 run('runtime-exception-explicit', 'athrow', [cjpm, 'run', '--target', 'wasm32-wasi'], {expectRc: 1, expect: /throwing an exception/});
-run('runtime-exception-status', 'athrow', [node, '--no-warnings', `${REL}/cjpm-wasi-runner.mjs`, `${REL}/bin/main.wasm`], {expectRc: 134, expect: /throwing an exception/});
+run('runtime-exception-status', 'athrow', [node, ...NODE_FLAGS, `${REL}/cjpm-wasi-runner.mjs`, `${REL}/bin/main.wasm`], {expectRc: 134, expect: /throwing an exception/});
 // workspace: members build into one target dir; like native workspaces, `run` needs --name.
 write(path.join(work, 'ws', 'cjpm.toml'), '[workspace]\n  members = ["app", "mathlib"]\n');
 const noTarget = root => f => !path.relative(root, f).split(path.sep).includes('target');
