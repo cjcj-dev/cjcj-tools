@@ -109,6 +109,7 @@ public class TomlInfo <: Serializable<TomlInfo> {
         result.profile = Profile.deserialize((dms.get(PROFILE) as DataModelStruct) ?? DataModelStruct())
         result.targetConfigMap = HashMap<String, TargetConfig>.deserialize(
             (dms.get(TARGET_CONFIG) as DataModelStruct) ?? DataModelStruct())
+        canonicalizeWasmTargetKeys(result.targetConfigMap)
         for ((targetName, targetConfig) in result.targetConfigMap) {
             targetConfig.targetName = targetName
             targetConfig.commonTargetInfo.targetName = targetName

@@ -11,7 +11,7 @@ import cjpm.implement.*
 import cjpm.config.*
 
 let RUN_SHORT_OPTION: String = "gV"
-let RUN_LONG_OPTION: Array<String> = ["verbose", "skip-build", "name=", "build-args=", "run-args=", "target-dir=",
+let RUN_LONG_OPTION: Array<String> = ["verbose", "skip-build", "name=", "build-args=", "run-args=", "target-dir=", "target=",
     "skip-script", "enable-features=", "no-feature-deduce"]
 
 class RunCommand <: Handle {
@@ -28,6 +28,7 @@ Available options:
   --skip-build                skip compile, only run the executable product
   --run-args <value>          the arguments to pass to the executable product
   --target-dir <value>        specify target directory
+  --target <value>            run a cross-compiled product; only wasm32-wasi is supported (via Node.js node:wasi)
   --enable-features <value>   explicitly specify comma-separated list of features to be enabled
   --no-feature-deduce         disables auto-enabling of features, deduced from other options, machine properties, etc.
   -g                          enable debug version
@@ -152,6 +153,18 @@ Available options:
             return false
         }
 
+        match (handleCrossTarget(argMap)) {
+            case Some(true) =>
+                if (!isWasmCrossCompile()) {
+                    eprintln("Error: 'cjpm run --target' supports only the wasm32-wasi target (${WASM_WASI_ALIASES}), " +
+                        "got '${crossCompileTarget}'")
+                    return false
+                }
+                runConfig.target = crossCompileTarget
+            case Some(false) => ()
+            case None => return false
+        }
+
         if (!execPreRun(runConfig)) {
             return false
         }
@@ -186,6 +199,9 @@ func execPreRun(runConfig: RunConfig): Bool {
     }
     if (!runConfig.targetPath.isEmpty()) {
         buildOption.add("--target-dir=${runConfig.targetPath}")
+    }
+    if (!runConfig.target.isEmpty()) {
+        buildOption.add("--target=${runConfig.target}")
     }
     if (runConfig.globalConfig.isSkipScript) {
         buildOption.add("--skip-script")

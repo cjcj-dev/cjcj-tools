@@ -395,6 +395,9 @@ func verifyBinDependencies(targetInfo: TargetInfo, path: String, configFilePath:
  * that callers can fall back to literal comparison.
  */
 public func normalizeTarget(target: String): String {
+    if (let Some(canonical) <- canonicalWasmTarget(target)) {
+        return canonical
+    }
     let parts = target.split("-")
     if (parts.size < 2) {
         return target
