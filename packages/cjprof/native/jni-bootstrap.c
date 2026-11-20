@@ -31,8 +31,19 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
     wchar_t *slash = wcsrchr(wide, L'\\');
     if (!slash || (size_t)(slash + 1 - wide) + sizeof(sibling)/sizeof(*sibling) > 32768) return JNI_ERR;
     memcpy(slash + 1, sibling, sizeof(sibling));
-    if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, library,
-                             sizeof(library), NULL, NULL)) return JNI_ERR;
+    // This runtime loads through LoadLibraryA. Reject lossy conversions;
+    // prefer the exact long path, then try its Windows short-path spelling.
+    UINT cp = GetACP();
+    DWORD flags = cp == CP_UTF8 ? 0 : WC_NO_BEST_FIT_CHARS;
+    BOOL lossy = FALSE;
+    BOOL *substitution = cp == CP_UTF8 ? NULL : &lossy;
+    if (!WideCharToMultiByte(cp, flags, wide, -1, library, sizeof(library), NULL, substitution) || lossy) {
+        wchar_t shortened[32768];
+        DWORD n = GetShortPathNameW(wide, shortened, 32768);
+        lossy = FALSE;
+        if (!n || n >= 32768 || !WideCharToMultiByte(cp, flags, shortened, -1, library,
+                                                       sizeof(library), NULL, substitution) || lossy) return JNI_ERR;
+    }
 #else
     Dl_info self;
     char library[PATH_MAX];
