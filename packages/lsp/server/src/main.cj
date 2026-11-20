@@ -9,13 +9,33 @@ import cangjie_lsp_core.*
 import cangjie_lsp_protocol.*
 import cjcj::basic.DiagSeverity
 
-// Linux host stdio reads bytes, not ConsoleReader's line-oriented buffer.
+// JSON-RPC lengths count bytes. The Windows CRT defaults pipes to text mode.
+@When[os == "Windows"]
+foreign func _setmode(fd: Int32, mode: Int32): Int32
+@When[os == "Windows"]
+foreign func _read(fd: Int32, buffer: CPointer<UInt8>, count: UInt32): Int32
+@When[os == "Windows"]
+func prepareStdio(): Unit {
+    let input = unsafe { _setmode(0, 0x8000) }
+    let output = unsafe { _setmode(1, 0x8000) }
+    if (input < 0 || output < 0) {
+        throw IllegalStateException("Cannot select binary stdio")
+    }
+}
+@When[os != "Windows"]
+func prepareStdio(): Unit {}
+@When[os != "Windows"]
 foreign func read(fd: Int32, buffer: CPointer<UInt8>, count: UIntNative): IntNative
+
+@When[os == "Windows"]
+func readBytes(pointer: CPointer<UInt8>, size: Int64): Int64 { Int64(unsafe { _read(0, pointer, UInt32(size)) }) }
+@When[os != "Windows"]
+func readBytes(pointer: CPointer<UInt8>, size: Int64): Int64 { Int64(unsafe { read(0, pointer, UIntNative(size)) }) }
 
 func readInput(buffer: Array<UInt8>): Int64 {
     let handle = unsafe { acquireArrayRawData(buffer) }
     try {
-        let count = unsafe { read(0, handle.pointer, UIntNative(buffer.size)) }
+        let count = readBytes(handle.pointer, buffer.size)
         if (count < 0) { throw IllegalStateException("stdin read failed") }
         return Int64(count)
     } finally { unsafe { releaseArrayRawData(handle) } }
@@ -57,21 +77,45 @@ func filePath(uri: String): String {
     }
     let result = String.fromUtf8(decoded.toArray())
     if (result.contains("\u{0}")) { throw IllegalArgumentException("NUL in file URI") }
-    return result
+    return nativeFilePath(result)
 }
+@When[os == "Windows"]
+func nativeFilePath(decoded: String): String {
+    let bytes = decoded.toArray()
+    if (bytes.size < 4 || bytes[0] != 47 || !driveLetter(bytes[1]) || bytes[2] != 58 || bytes[3] != 47) {
+        throw IllegalArgumentException("Expected local drive in Windows file URI")
+    }
+    return decoded[1..].replace("/", "\\")
+}
+@When[os != "Windows"]
+func nativeFilePath(decoded: String): String { decoded }
+func driveLetter(byte: UInt8): Bool { (byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122) }
+@When[os == "Windows"]
+func uriPath(path: String): String { "/" + path.replace("\\", "/") }
+@When[os != "Windows"]
+func uriPath(path: String): String { path }
 func fileUri(path: String): String {
     let out = StringBuilder(); out.append("file://")
     let digits = "0123456789ABCDEF".toArray()
-    for (byte in path.toArray()) {
+    let encodedPath = uriPath(path)
+    let localDrive = encodedPath != path
+    let bytes = encodedPath.toArray()
+    for (i in 0..bytes.size) {
+        let byte = bytes[i]
         if ((byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122) || (byte >= 48 && byte <= 57) ||
+            (i == 2 && byte == 58 && driveLetter(bytes[1]) && bytes.size > 3 && bytes[3] == 47 && localDrive) ||
             byte == 47 || byte == 45 || byte == 46 || byte == 95 || byte == 126) { out.append(String.fromUtf8([byte])) }
         else { out.append("%" + String.fromUtf8([digits[Int64(byte / 16)], digits[Int64(byte % 16)]])) }
     }
     return out.toString()
 }
+@When[os == "Windows"]
+func nativeBackslash(byte: UInt8): Bool { byte == 92 }
+@When[os != "Windows"]
+func nativeBackslash(byte: UInt8): Bool { false }
 func parent(path: String): String {
     let bytes = path.toArray(); var idx = bytes.size - 1
-    while (idx >= 0 && bytes[idx] != 47) { idx-- }
+    while (idx >= 0 && bytes[idx] != 47 && !nativeBackslash(bytes[idx])) { idx-- }
     return path[0..(idx + 1)]
 }
 func locationJson(location: SemanticLocation): JsonValue {
@@ -378,6 +422,7 @@ class Server {
 
 main(args: Array<String>): Int64 {
     if (args.size != 2 || args[0] != "--sdk") { Console.stdErr.writeln("Usage: cangjie-lsp --sdk <target SDK>"); return 2 }
+    prepareStdio()
     let server = Server(args[1]); let framer = MessageFramer(); let buffer = Array<UInt8>(4096, repeat: 0)
     try {
         while (!server.exiting) {
