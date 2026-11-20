@@ -1,5 +1,5 @@
 #!/usr/bin/env zx
-import {$} from 'zx';
+import {spawnSync} from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -55,19 +55,20 @@ if (command === 'build') {
   }
   const argv = [cjc, '-p', path.join(root, 'src'), '-o', product, '-j', String(jobs), ...imports,
     ...(v['runtime-config'] ? [path.resolve(v['runtime-config'])] : []),
-    path.resolve(v.shim), ...link.flatMap(option => ['--link-options', option])];
-  const result = await $({cwd: root, nothrow: true, quiet: true})`${argv}`;
+    path.resolve(v.shim), ...link.flatMap(option => [process.platform === 'win32' ? '--link-option' : '--link-options', option])];
+  const result=spawnSync(argv[0],argv.slice(1),{cwd:root,encoding:'utf8',maxBuffer:32*1024*1024});
+  if(result.error)throw result.error;
   await fs.writeFile(path.join(build, 'compile.stdout'), result.stdout);
   await fs.writeFile(path.join(build, 'compile.stderr'), result.stderr);
-  const facts = {command: argv, rc: result.exitCode, signal: result.signal ?? null,
+  const facts = {command: argv, rc: result.status, signal: result.signal ?? null,
     frontend: {commit: v['frontend-commit'], directory: frontend}, llvm: path.resolve(v['llvm-lib']),
     cjc, runtimeConfig: v['runtime-config'] ? path.resolve(v['runtime-config']) : null,
     platform: process.platform, architecture: process.arch,
     sourceCommit: v['source-commit'] ?? null, runtimeDirectory: v['runtime-dir'] ?? null};
-  if (result.exitCode === 0) facts.product = {path: product, sha256: await digest(product)};
+  if (result.status === 0) facts.product = {path: product, sha256: await digest(product)};
   await fs.writeFile(factsFile, JSON.stringify(facts, null, 2) + '\n');
   process.stdout.write(result.stdout); process.stderr.write(result.stderr);
-  process.exitCode = result.exitCode;
+  process.exitCode = result.status ?? 1;
 } else {
   if (!v.prefix) throw Error('Required option: --prefix');
   const facts = JSON.parse(await fs.readFile(factsFile, 'utf8'));

@@ -6,5 +6,5 @@ output-type = "executable"
 src-dir = "src"
 compile-option = "-O2"
 link-option = @LINK@
-[target.x86_64-unknown-linux-gnu.bin-dependencies]
+[target.@TARGET@.bin-dependencies]
 path-option = @FRONTEND@

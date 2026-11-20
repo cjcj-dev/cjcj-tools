@@ -1,4 +1,5 @@
 #!/usr/bin/env zx
+import {windows, hostTriple, executable, buildEnv, linkOptions, installDlls} from '../../build/native-host.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -6,7 +7,7 @@ import {spawn} from 'node:child_process';
 import {parseArgs} from 'node:util';
 import {createHash} from 'node:crypto';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const {positionals,values}=parseArgs({allowPositionals:true,options:{sdk:{type:'string'},cjpm:{type:'string'},'cjpm-sdk':{type:'string'},'frontend-cjo':{type:'string'},'frontend-lib':{type:'string'},'frontend-native':{type:'string'},'frontend-ref':{type:'string'},'source-ref':{type:'string'},'build-dir':{type:'string'},jobs:{type:'string',default:'4'},'build-type':{type:'string',default:'release'},target:{type:'string',default:'x86_64-unknown-linux-gnu'},coverage:{type:'boolean'},output:{type:'string'},prefix:{type:'string'}}});
+const {positionals,values}=parseArgs({allowPositionals:true,options:{sdk:{type:'string'},cjpm:{type:'string'},'cjpm-sdk':{type:'string'},'frontend-cjo':{type:'string'},'frontend-lib':{type:'string'},'frontend-native':{type:'string'},'frontend-ref':{type:'string'},'source-ref':{type:'string'},'build-dir':{type:'string'},jobs:{type:'string',default:'4'},'build-type':{type:'string',default:'release'},target:{type:'string',default:hostTriple},coverage:{type:'boolean'},output:{type:'string'},prefix:{type:'string'}}});
 const build=path.resolve(values['build-dir']||path.join(root,'build-cangjie'));
 const command=positionals[0];
 // CJPM tracks staged dependency files. Leave unchanged inputs untouched so a
@@ -26,7 +27,7 @@ if(command==='build'){
  for(const option of ['frontend-ref','source-ref'])if(values[option]&&!/^[0-9a-f]{40}$/.test(values[option]))throw Error('invalid --'+option);
  const sdk=path.resolve(values.sdk),cjo=path.resolve(values['frontend-cjo']),lib=path.resolve(values['frontend-lib']);
  const cjpmSdk=path.resolve(values['cjpm-sdk']??sdk);
- const cjpm=values.cjpm||path.join(cjpmSdk,'tools/bin/cjpm');
+ const cjpm=values.cjpm||executable(path.join(cjpmSdk,'tools/bin/cjpm'));
  const workspace=path.join(build,'workspace');await fs.mkdir(path.join(workspace,'src'),{recursive:true});
  const sources=(await fs.readdir(path.join(root,'src'))).filter(name=>name.endsWith('.cj'));
  for(const name of sources)await stageFile(path.join(root,'src',name),path.join(workspace,'src',name));
@@ -57,30 +58,34 @@ if(command==='build'){
  }
  const manifest=(await fs.readFile(path.join(root,'build/cjpm.toml.in'),'utf8'))
   .replace('@TARGET@',values.target)
-  .replace('@COMPILE@',JSON.stringify('--set-runtime-rpath'))
-  .replace('@LINK@',JSON.stringify(native))
+  .replace('@COMPILE@',JSON.stringify(values.target.includes('mingw')?'':'--set-runtime-rpath'))
+  .replace('@LINK@',JSON.stringify(native?linkOptions(workspace,[native]):''))
   .replace('@PACKAGES@',packageOptions.join('\n'));
  await writeChanged(path.join(workspace,'cjpm.toml'),Buffer.from(manifest));
  await writeChanged(path.join(workspace,'cangjie-repo.toml'),Buffer.from('[repository.cache]\npath = \"./cache\"\n'));
- const env={...process.env,CANGJIE_HOME:sdk,CJPM_CONFIG:path.join(workspace,'cache'),PATH:path.join(sdk,'bin')+path.delimiter+process.env.PATH,LD_LIBRARY_PATH:[path.join(cjpmSdk,'runtime/lib/linux_x86_64_cjnative'),path.join(cjpmSdk,'tools/lib'),path.join(cjpmSdk,'third_party/llvm/lib')].join(path.delimiter)};
+ const env={...buildEnv(sdk,cjpmSdk),CJPM_CONFIG:path.join(workspace,'cache'),LD_LIBRARY_PATH:[path.join(cjpmSdk,'runtime/lib/linux_x86_64_cjnative'),path.join(cjpmSdk,'tools/lib'),path.join(cjpmSdk,'third_party/llvm/lib')].join(path.delimiter)};
  const args=['build','--incremental','--target-dir',path.join(build,'target'),'-j',values.jobs,'-V'];
  if(values['build-type']==='debug')args.push('-g');
  if(values.coverage)args.push('--coverage');
- if(values.target!=='x86_64-unknown-linux-gnu')args.push('--target',values.target);
+ if(values.target!==hostTriple)args.push('--target',values.target);
  const log=await fs.open(path.join(build,'cjfmt.log'),'w');
  const child=spawn(cjpm,args,{cwd:workspace,env,stdio:['ignore',log.fd,log.fd]});
  const result=await new Promise(resolve=>{child.once('error',error=>resolve({rc:null,signal:null,error:error.message}));child.once('close',(rc,signal)=>resolve({rc,signal}));});
  await log.close();await fs.writeFile(path.join(build,'commands.json'),JSON.stringify([{argv:[cjpm,...args],cwd:workspace,...result}],null,2));
  if(result.rc!==0){process.stderr.write(await fs.readFile(path.join(build,'cjfmt.log'),'utf8'));process.exit(result.rc??1);}
  // CJPM's executable target is named main; the installed CLI is cjfmt.
- const output=path.resolve(values.output||path.join(build,'cjfmt'));await fs.mkdir(path.dirname(output),{recursive:true});
- await fs.copyFile(path.join(build,'target/'+(values.target==='x86_64-unknown-linux-gnu'?'':values.target+'/')+values['build-type']+'/bin/main'+(values.target.includes('windows')?'.exe':'')),output);
+ const output=path.resolve(values.output||path.join(build,'cjfmt'+(values.target.includes('mingw')?'.exe':'')));await fs.mkdir(path.dirname(output),{recursive:true});
+ await fs.copyFile(path.join(build,'target/'+(values.target===hostTriple?'':values.target+'/')+values['build-type']+'/bin/main'+(/mingw|windows/.test(values.target)?'.exe':'')),output);
  const sha256=createHash('sha256').update(await fs.readFile(output)).digest('hex');
  await fs.writeFile(path.join(build,'inputs.json'),JSON.stringify({sdk,cjo,archives,native:values['frontend-native']??null,frontendRef:values['frontend-ref']??null,source:root,sourceRef:values['source-ref']??null,language:'Cangjie',output,buildType:values['build-type'],target:values.target,coverage:!!values.coverage,sha256},null,2));
 }else if(command==='install'){
  if(!values.prefix)throw Error('install requires --prefix');
  const prefix=path.resolve(values.prefix);await fs.mkdir(path.join(prefix,'bin'),{recursive:true});await fs.mkdir(path.join(prefix,'config'),{recursive:true});
- await fs.copyFile(path.join(build,'cjfmt'),path.join(prefix,'bin/cjfmt'));await fs.chmod(path.join(prefix,'bin/cjfmt'),0o755);
+ const facts=JSON.parse(await fs.readFile(path.join(build,'inputs.json')));
+ const dest=path.join(prefix,'bin',/mingw|windows/.test(facts.target)?'cjfmt.exe':'cjfmt');
+ if(createHash('sha256').update(await fs.readFile(facts.output)).digest('hex')!==facts.sha256)throw Error('cjfmt build product changed');
+ await fs.copyFile(facts.output,dest);await fs.chmod(dest,0o755);
+ if(windows && facts.target===hostTriple)installDlls({sdk:facts.sdk,images:[dest],prefix});
  await fs.copyFile(path.join(root,'config/cangjie-format.toml'),path.join(prefix,'config/cangjie-format.toml'));
  await fs.copyFile(path.join(build,'inputs.json'),path.join(prefix,'cjfmt-build.json'));
 }else throw Error('usage: cangjie.mjs build --sdk SDK --frontend-cjo CJO --frontend-lib LIB --build-dir BUILD | install --build-dir BUILD --prefix PREFIX');

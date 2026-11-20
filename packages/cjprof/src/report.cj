@@ -3,6 +3,7 @@
 package cjprof
 import std.collection.*
 import std.convert.*
+import std.env.getCommand
 import std.fs.*
 import std.sort.*
 
@@ -14,8 +15,7 @@ func xml(s: String): String {
     s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
 }
 func staticRoot(): String {
-    let parts = canonicalize(Path("/proc/self/exe")).toString().split("/")
-    return String.join(parts[0..parts.size-2], delimiter: "/") + "/config/static"
+    return canonicalize(Path(getCommand())).parent.parent.join("config/static").toString()
 }
 class SampleStack {
     let names: Array<String> // leaf first as stored by the recorder
