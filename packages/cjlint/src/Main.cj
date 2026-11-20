@@ -1,10 +1,10 @@
 package cjlint
 
 import cjcj::basic.Position
-import cjcj::utils.{FileUtil, GetApplicationPath}
+import cjcj::utils.FileUtil
 import std.fs.File as SourceFile
-import std.fs.{Directory, FileInfo, exists}
-import std.env.{getStdErr, getVariables, getCommand, getCommandLine}
+import std.fs.{Directory, FileInfo, canonicalize, exists}
+import std.env.{getStdErr, getCommand}
 import std.collection.*
 import std.sort.*
 
@@ -33,11 +33,12 @@ class Options {
     var modules = ""
     var importPath = ""
     var exclusions = ""
+    var executable = ""
     var applicationRoot = ""
     var showHelp = false
     var showVersion = false
     func parse(args: Array<String>): Unit {
-        var index: Int64 = 1
+        var index: Int64 = 0
         while (index < args.size) {
             let name = args[index]
             if (name == "-h") { showHelp = true; return }
@@ -179,23 +180,17 @@ func run(options: Options): Int64 {
     return if (invalidEncoding || !frontendSucceeded) { 1 } else { 0 }
 }
 
-main(): Int64 {
+main(args: Array<String>): Int64 {
     try {
-        let command = getCommand()
-        let rawArgs = getCommandLine()
-        let argumentList = ArrayList<String>()
-        if (rawArgs.isEmpty() || rawArgs[0] != command) { argumentList.add(command) }
-        for (argument in rawArgs) { argumentList.add(argument) }
-        let args = argumentList.toArray()
-        if (args.size <= 1) { println(helpText); return 0 }
+        if (args.isEmpty()) { println(helpText); return 0 }
         let options = Options()
         options.parse(args)
         if (options.showHelp) { println(helpText); return 0 }
         if (options.showVersion) { println("cjlint 1.3.0-alpha.08 (Cangjie)"); return 0 }
-        let env = HashMap<String, String>()
-        for ((key, value) in getVariables()) { env[key] = value }
-        let executable = GetApplicationPath(args[0], env) ?? fail("Cannot resolve executable path")
-        options.applicationRoot = FileUtil.GetDirPath(FileUtil.GetDirPath(executable))
+        // The OS supplies the actual image of this process, including its drive
+        // and .exe suffix on Windows. Its private modules live beside that image.
+        options.executable = canonicalize(getCommand()).toString()
+        options.applicationRoot = FileUtil.GetDirPath(FileUtil.GetDirPath(options.executable))
         if (options.config.isEmpty()) { options.config = options.applicationRoot }
         return run(options)
     } catch (e: Exception) {

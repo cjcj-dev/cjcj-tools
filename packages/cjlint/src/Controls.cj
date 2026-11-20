@@ -13,7 +13,7 @@ class PathExclusion {
     let directory: Bool
     let anchored: Bool
     init(base: String, text: String) {
-        this.base = base
+        this.base = FileUtil.Normalize(base, toUnix: true)
         var value = text.trimAscii()
         include = value.startsWith("!")
         if (include) { value = value[1..].trimAscii() }
@@ -28,8 +28,10 @@ class PathExclusion {
         pattern = if (value == ".") { "**" } else { value }
     }
     func matches(path: String): Bool {
-        if (!path.startsWith(base + "/")) { return false }
-        let relative = path[base.size + 1..]
+        let normalized = FileUtil.Normalize(path, toUnix: true)
+        let prefix = if (base.endsWith("/")) { base } else { base + "/" }
+        if (!normalized.startsWith(prefix)) { return false }
+        let relative = normalized[prefix.size..]
         let segments = relative.split("/")
         let limit = if (directory) { segments.size - 1 } else { segments.size }
         for (start in 0..segments.size) {

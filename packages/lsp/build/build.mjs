@@ -65,6 +65,7 @@ if(o.server){
  if(!windows)fs.writeFileSync(app+'/runtime-link.rsp','-rpath "$ORIGIN/../lib"\n');
  const link=[o['runtime-config'],o['llvm-shim'],o['llvm-library'],...frontendCxxLibraries(),
  path.join(stdxLib,'libstdx.encoding.json.a'),
+ ...(windows?[path.join(stdxLib,'libstdx.encoding.jsonFFI.a')]:[]),
  path.join(stdxLib,'libstdx.serialization.serialization.a')];
  if(!windows)link.push('@'+app+'/runtime-link.rsp');
  fs.writeFileSync(app+'/cjpm.toml','[package]\nname = "cangjie_lsp"\nversion = "0.1.0"\ncjc-version = "1.1.0"\noutput-type = "executable"\nsrc-dir = "src"\nlink-option = '+JSON.stringify(linkOptions(app,link))+'\n[target.'+hostTriple+'.bin-dependencies]\npath-option = '+JSON.stringify(bins)+'\n');
