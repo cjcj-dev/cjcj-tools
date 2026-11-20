@@ -1,5 +1,5 @@
 #!/usr/bin/env zx
-import {windows, hostTriple, tuple, executable, buildEnv, linkOptions, installDlls} from '../../build/native-host.mjs';
+import {windows, frontendCxxLibraries, hostTriple, tuple, executable, buildEnv, linkOptions, installDlls} from '../../build/native-host.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -23,6 +23,7 @@ if(o.phase==='install') {
 for(const k of ['sdk','cjpm','build'])if(!o[k])throw Error('Missing --'+k);
 if(Boolean(o.frontend)===Boolean(o['frontend-packages']))throw Error('Select source --frontend or shared --frontend-packages');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),build=path.resolve(o.build),frontend=o.frontend?path.resolve(o.frontend):null,sdk=path.resolve(o.sdk);
+const cjpmSdk=path.resolve(path.dirname(o.cjpm),'../..');
 const jobs=o.jobs??'4';if(!/^[1-9][0-9]*$/.test(jobs))throw Error('Invalid jobs');
 fs.mkdirSync(build,{recursive:true});
 // CJPM requires src-dir inside its module. This is the normal build workspace
@@ -48,7 +49,7 @@ if(o['runtime-config'])manifest=manifest.replace('output-type = "static"','outpu
 fs.writeFileSync(build+'/cjpm.toml',manifest);
 const argv=[o.cjpm,'build','--target-dir',build+'/target','-j',jobs,'-V'];
 const started=new Date().toISOString();
-const r=spawnSync(argv[0],argv.slice(1),{cwd:build,env:buildEnv(sdk),stdio:'inherit'});
+const r=spawnSync(argv[0],argv.slice(1),{cwd:build,env:buildEnv(sdk,cjpmSdk),stdio:'inherit'});
 fs.writeFileSync(build+'/build-command.json',JSON.stringify({argv,cwd:build,started,ended:new Date().toISOString(),rc:r.status,signal:r.signal,error:r.error?.message??null},null,2));
 if(r.status!==0)process.exit(r.status??1);
 if(o.server){
@@ -56,15 +57,19 @@ if(o.server){
  const app=build+'/server';fs.mkdirSync(app,{recursive:true});copySource(root+'/server/src',app+'/src');
  const names=['basic','utils','lex','option','ast','parse','flatbuffers','conditional_compilation','modules','macro_pkg','meta_transformation','mangle','sema','chir','codegen','incremental_compilation','frontend'];
  const bins=names.map(name=>path.resolve(o['frontend-packages'],name+'@cjcj'));
- bins.push(build+'/target/release/cangjie_lsp_core',build+'/target/release/cangjie_lsp_protocol',path.resolve(o['json-build'],'modules',tuple,'stdx'));
+ // The full Windows stdx install publishes CJOs and archives together.
+ const installedStdx=path.resolve(o['json-build'],tuple,'static/stdx');
+ const stdxModules=windows?installedStdx:path.resolve(o['json-build'],'modules',tuple,'stdx');
+ const stdxLib=windows?installedStdx:path.resolve(o['json-build'],'lib',tuple);
+ bins.push(build+'/target/release/cangjie_lsp_core',build+'/target/release/cangjie_lsp_protocol',stdxModules);
  if(!windows)fs.writeFileSync(app+'/runtime-link.rsp','-rpath "$ORIGIN/../lib"\n');
- const link=[o['runtime-config'],o['llvm-shim'],o['llvm-library'],'-lstdc++',
- path.resolve(o['json-build'],'lib',tuple,'libstdx.encoding.json.a'),
- path.resolve(o['json-build'],'lib',tuple,'libstdx.serialization.serialization.a')];
+ const link=[o['runtime-config'],o['llvm-shim'],o['llvm-library'],...frontendCxxLibraries(),
+ path.join(stdxLib,'libstdx.encoding.json.a'),
+ path.join(stdxLib,'libstdx.serialization.serialization.a')];
  if(!windows)link.push('@'+app+'/runtime-link.rsp');
  fs.writeFileSync(app+'/cjpm.toml','[package]\nname = "cangjie_lsp"\nversion = "0.1.0"\ncjc-version = "1.1.0"\noutput-type = "executable"\nsrc-dir = "src"\nlink-option = '+JSON.stringify(linkOptions(app,link))+'\n[target.'+hostTriple+'.bin-dependencies]\npath-option = '+JSON.stringify(bins)+'\n');
  const argv=[o.cjpm,'build','--target-dir',app+'/target','-j',jobs,'-V'],started=new Date().toISOString();
- const r=spawnSync(argv[0],argv.slice(1),{cwd:app,env:buildEnv(sdk),stdio:'inherit'});
+ const r=spawnSync(argv[0],argv.slice(1),{cwd:app,env:buildEnv(sdk,cjpmSdk),stdio:'inherit'});
  fs.writeFileSync(build+'/server-build-command.json',JSON.stringify({argv,cwd:app,started,ended:new Date().toISOString(),rc:r.status,signal:r.signal,error:r.error?.message??null,inputs:{sdk,frontendPackages:path.resolve(o['frontend-packages']),llvmLibrary:path.resolve(o['llvm-library']),runtimeConfig:path.resolve(o['runtime-config']),jsonBuild:path.resolve(o['json-build']),llvmShim:path.resolve(o['llvm-shim'])}},null,2));
  if(r.status!==0)process.exit(r.status??1);
  if(o.install)install(build,path.resolve(o.install));

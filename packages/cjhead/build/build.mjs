@@ -1,4 +1,5 @@
 #!/usr/bin/env zx
+import {frontendCxxLibraries} from '../../build/native-host.mjs';
 import {spawnSync} from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -49,7 +50,7 @@ if (command === 'build') {
   const link = process.platform === 'darwin'
     ? libraries.flatMap(file => ['-force_load', file])
     : ['--start-group', ...libraries, '--end-group'];
-  link.push(path.resolve(v['llvm-lib']), process.platform === 'darwin' ? '-lc++' : '-lstdc++');
+  link.push(path.resolve(v['llvm-lib']), ...(process.platform === 'darwin' ? ['-lc++'] : frontendCxxLibraries()));
   if (process.platform !== 'win32') {
     link.push('-rpath', process.platform === 'darwin' ? '@executable_path/../lib' : '$ORIGIN/../lib');
   }

@@ -1,6 +1,7 @@
 #!/usr/bin/env zx
 // cjprof-only Cangjie producer; never invokes the legacy C++ producer.
-import {windows, tuple, executable, buildEnv, coffNames, installDlls} from '../../build/native-host.mjs';
+import {windows, executable, buildEnv, installDlls} from '../../build/native-host.mjs';
+import {profileSources,windowsBootstrap} from './products.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -23,11 +24,7 @@ function run(argv) {
 if (action==='build') {
   if (!sdk || !path.isAbsolute(sdk)) throw Error('--sdk requires an absolute compiler SDK path');
   fs.mkdirSync(build,{recursive:true});
-  const sources=fs.readdirSync(path.join(root,'src')).filter(x=>x.endsWith('.cj')).sort().map(x=>path.join(root,'src',x));
-  if(windows){
-    for(const name of ['record.cj','dump.cj','elf.cj'])sources.splice(sources.indexOf(path.join(root,'src',name)),1);
-    sources.push(path.join(root,'platform/windows/live.cj'));
-  }
+  const sources=profileSources(root,windows);
   const cjc=executable(path.join(sdk,'bin/cjc')),sys=windows?[]:['-latomic','-lstdc++'];
   const argv=[cjc,...sources,...sys,'-o',path.join(build,product)];
   fs.writeFileSync(path.join(build,'command.json'),JSON.stringify({argv,sdk,root},null,2));
@@ -39,17 +36,8 @@ if (action==='build') {
   const runtimeHeader=option('--runtime-header',null);
   if (!jdk || !runtimeHeader) throw Error('JNI build requires --jni-home JDK and --runtime-header matching-runtime/Cangjie.h');
   let bootstrap;
-  if(windows){
-    const declarations=fs.readFileSync(path.join(root,'java/com/cjprof/jni/Cjprof.java'),'utf8');
-    const required=Array.from(declarations.matchAll(/public static native [^;]+? (\w+)\(/g),m=>'Java_com_cjprof_jni_Cjprof_'+m[1]);
-    const exported=new Set(coffNames(sdk,path.join(build,implementation),'exports'));
-    if(!required.length||required.some(name=>!exported.has(name)))throw Error('Windows Cangjie DLL is missing required Java native methods: '+required.filter(name=>!exported.has(name)));
-    const def=path.join(build,'cjprof-jni.def');
-    fs.writeFileSync(def,'EXPORTS\n'+required.map(name=>name+'=libcjprof-cangjie.'+name).join('\n')+'\n');
-    bootstrap=[process.env.CC||'gcc','-std=c11','-shared','-Wall','-Wextra','-Werror',
-      '-I'+path.join(jdk,'include'),'-I'+path.join(jdk,'include/win32'),'-include',runtimeHeader,
-      path.join(root,'native/jni-bootstrap.c'),def,path.join(sdk,'runtime/lib',tuple,'libcangjie-runtime.dll'),'-o',path.join(build,jni)];
-  }else bootstrap=[process.env.CC??'cc','-std=c11','-D_GNU_SOURCE','-shared','-fPIC','-Wall','-Wextra','-Werror',
+  if(windows)bootstrap=windowsBootstrap({sdk,jdk,root,runtimeHeader,build,cc:process.env.CC||'gcc'});
+  else bootstrap=[process.env.CC??'cc','-std=c11','-D_GNU_SOURCE','-shared','-fPIC','-Wall','-Wextra','-Werror',
     '-I'+path.join(jdk,'include'),'-I'+path.join(jdk,'include','linux'),'-include',runtimeHeader,
     path.join(root,'native','jni-bootstrap.c'),'-L'+build,'-Wl,--no-as-needed','-lcjprof-cangjie',
     '-L'+path.join(sdk,'runtime','lib','linux_x86_64_cjnative'),'-lcangjie-runtime','-ldl',

@@ -1,5 +1,5 @@
 #!/usr/bin/env zx
-import {windows, executable as exe, buildEnv, installDlls} from '../../build/native-host.mjs';
+import {windows, frontendCxxLibraries, executable as exe, buildEnv, installDlls} from '../../build/native-host.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -42,7 +42,7 @@ if(command==='build'){
   }
  }
  const runtime=path.resolve(v['runtime-config']??path.join(source,'runtime_shim/cjc_runtime_config.o'));
- const links=['--start-group',...archives,'--end-group',runtime,shim,llvm,'-lstdc++'];
+ const links=['--start-group',...archives,'--end-group',runtime,shim,llvm,...frontendCxxLibraries()];
  if(windows)for(const input of links)argv.push('--link-option',input);
  else argv.push('--link-options',links.join(' '));
  argv.push('-o',exe(path.join(build,'cjcompat')));

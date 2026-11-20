@@ -14,8 +14,14 @@ export const dllRoots = sdk => [path.join(sdk,'runtime/lib',tuple), path.join(sd
 export function buildEnv(sdk, cjpmSdk=sdk) {
   const env={...process.env,CANGJIE_HOME:sdk};
   const key=Object.keys(env).find(key=>key.toUpperCase()==='PATH') ?? 'PATH';
-  env[key]=[path.join(sdk,'bin'),...(windows?[...dllRoots(sdk),...dllRoots(cjpmSdk)]:[]),env[key]].join(path.delimiter);
+  env[key]=[path.join(sdk,'bin'),...(windows?[...dllRoots(cjpmSdk),...dllRoots(sdk)]:[]),env[key]].join(path.delimiter);
   return env;
+}
+
+export function frontendCxxLibraries() {
+  if (!windows) return ['-lstdc++'];
+  if (!process.env.MINGW_PATH) throw Error('MINGW_PATH is required for the selected Windows C++ runtime');
+  return ['-L'+path.join(process.env.MINGW_PATH,'x86_64-w64-mingw32/lib'),'-lc++','-lunwind'];
 }
 
 // cjc splits the plural --link-options on spaces. Pass one relative argument
