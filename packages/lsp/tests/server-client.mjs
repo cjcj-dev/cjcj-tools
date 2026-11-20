@@ -128,7 +128,8 @@ await client('workspace-unopened-siblings',async c=>{
  // A directory sharing the root's characters is not its descendant.
  const outside=root+'-sibling';fs.mkdirSync(outside,{recursive:true});
  fs.writeFileSync(path.join(outside,'definition.cj'),definition);
- const otherUri=pathToFileURL(path.join(outside,'unsaved.cj')).href;
+ const outsideFile=path.join(outside,'use.cj');fs.writeFileSync(outsideFile,source);
+ const otherUri=pathToFileURL(outsideFile).href;
  c.send(note('textDocument/didOpen',{textDocument:{uri:otherUri,languageId:'cangjie',version:1,text:source}}));
  const excluded=await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===otherUri);
  assert(excluded.params.diagnostics.some(d=>d.severity===1&&d.message.includes('diskAnswer')),'LSP_PREFIX_SIBLING_EXCLUDED');
