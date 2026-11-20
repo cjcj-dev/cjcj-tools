@@ -40,7 +40,9 @@ export function nativePackageOptions(workspace, args, compile = '', response = w
   // CJPM's incremental command must change when the ordered linker inputs do.
   const name='native-link-'+createHash('sha256').update(body).digest('hex')+'.rsp';
   fs.writeFileSync(path.join(workspace,name),body);
-  return 'compile-option = '+JSON.stringify([compile,'--link-option=@'+name].filter(Boolean).join(' '));
+  // Quote the whole token for CJPM: an unquoted '=' becomes two argv entries.
+  const option='"--link-option=@'+name+'"';
+  return 'compile-option = '+JSON.stringify([compile,option].filter(Boolean).join(' '));
 }
 
 export function coffNames(sdk, image, kind) {
