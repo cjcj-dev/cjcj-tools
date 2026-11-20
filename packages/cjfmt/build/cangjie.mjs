@@ -1,5 +1,5 @@
 #!/usr/bin/env zx
-import {windows, hostTriple, executable, buildEnv, linkOptions, installDlls} from '../../build/native-host.mjs';
+import {windows, hostTriple, executable, buildEnv, nativePackageOptions, installDlls} from '../../build/native-host.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -58,8 +58,7 @@ if(command==='build'){
  }
  const manifest=(await fs.readFile(path.join(root,'build/cjpm.toml.in'),'utf8'))
   .replace('@TARGET@',values.target)
-  .replace('@COMPILE@',JSON.stringify(values.target.includes('mingw')?'':'--set-runtime-rpath'))
-  .replace('@LINK@',JSON.stringify(native?linkOptions(workspace,[native]):''))
+  .replace('@OPTIONS@',()=>nativePackageOptions(workspace,native?[native]:[],values.target.includes('mingw')?'':'--set-runtime-rpath'))
   .replace('@PACKAGES@',packageOptions.join('\n'));
  await writeChanged(path.join(workspace,'cjpm.toml'),Buffer.from(manifest));
  await writeChanged(path.join(workspace,'cangjie-repo.toml'),Buffer.from('[repository.cache]\npath = \"./cache\"\n'));

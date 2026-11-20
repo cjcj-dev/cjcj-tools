@@ -1,6 +1,7 @@
 // Host tools are built with the selected native SDK. Keep target selection
 // separate from the machine that happens to drive a cross build of cjfmt.
 import fs from 'node:fs';
+import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 
@@ -24,16 +25,22 @@ export function frontendCxxLibraries() {
   return ['-L'+path.join(process.env.MINGW_PATH,'x86_64-w64-mingw32/lib'),'-lc++','-lunwind'];
 }
 
-// cjc splits the plural --link-options on spaces. Pass one relative argument
-// through CJPM; let the native linker read one quoted filename per line.
-export function linkOptions(workspace, args) {
-  if (!windows) return args.join(' ');
-  const name='native-link.rsp';
-  fs.writeFileSync(path.join(workspace,name),args.map(arg=>{
-    if (/["\r\n]/.test(arg)) throw Error('invalid native linker input: '+arg);
-    return '"'+arg.replaceAll('\\','/')+'"';
-  }).join('\n')+'\n');
-  return '@'+name;
+// CJPM passes compile-option tokens as cjc argv. Keep the response reference
+// attached to the singular driver option so only the native linker opens it.
+export function nativePackageOptions(workspace, args, compile = '', response = windows) {
+  if (!response || !args.length) {
+    return 'compile-option = '+JSON.stringify(compile)+'\nlink-option = '+JSON.stringify(args.join(' '));
+  }
+  const lines=args.map(arg=>{
+    if (/[\0\r\n]/.test(arg)) throw Error('invalid native linker argument');
+    const value=windows ? arg.replaceAll('\\','/') : arg.replaceAll('\\','\\\\');
+    return '"'+value.replaceAll('"','\\"')+'"';
+  });
+  const body=lines.join('\n')+'\n';
+  // CJPM's incremental command must change when the ordered linker inputs do.
+  const name='native-link-'+createHash('sha256').update(body).digest('hex')+'.rsp';
+  fs.writeFileSync(path.join(workspace,name),body);
+  return 'compile-option = '+JSON.stringify([compile,'--link-option=@'+name].filter(Boolean).join(' '));
 }
 
 export function coffNames(sdk, image, kind) {

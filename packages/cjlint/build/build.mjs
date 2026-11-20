@@ -1,5 +1,5 @@
 #!/usr/bin/env zx
-import {windows, frontendCxxLibraries, hostTriple, executable as exe, buildEnv, linkOptions, installDlls} from '../../build/native-host.mjs';
+import {windows, frontendCxxLibraries, hostTriple, executable as exe, buildEnv, nativePackageOptions, installDlls} from '../../build/native-host.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -38,13 +38,12 @@ if(action==='build') {
   const configObject=path.resolve(v['frontend-runtime-object']);
   const llvmShim=path.resolve(v['llvm-shim']),llvmLibrary=path.resolve(v['llvm-library']);
   for(const file of [configObject,llvmShim,llvmLibrary])if(!fs.statSync(file).isFile())throw Error('Missing frontend infrastructure input: '+file);
-  const quote=x=>JSON.stringify(x);
   const artifacts=path.resolve(v['frontend-artifacts']);
   const directories=['basic','utils','lex','option','ast','parse','flatbuffers','conditional_compilation','modules',
     'macro_pkg','meta_transformation','mangle','sema','chir','codegen','incremental_compilation','frontend'];
   const manifest=fs.readFileSync(path.join(source,'cjpm.toml.in'),'utf8')
     .replace('@TARGET@',hostTriple)
-    .replace('@LINK@',quote(linkOptions(project,[configObject,llvmShim,llvmLibrary,...frontendCxxLibraries()])))
+    .replace('@OPTIONS@',()=>nativePackageOptions(project,[configObject,llvmShim,llvmLibrary,...frontendCxxLibraries()],'-O2'))
     .replace('@FRONTEND@',JSON.stringify(directories.map(p=>path.join(artifacts,p+'@cjcj'))));
   fs.writeFileSync(path.join(project,'cjpm.toml'),manifest);
   const cjpmSdk=path.resolve(v['cjpm-sdk']??sdk);

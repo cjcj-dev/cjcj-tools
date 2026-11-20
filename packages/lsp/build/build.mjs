@@ -1,5 +1,5 @@
 #!/usr/bin/env zx
-import {windows, frontendCxxLibraries, hostTriple, tuple, executable, buildEnv, linkOptions, installDlls} from '../../build/native-host.mjs';
+import {windows, frontendCxxLibraries, hostTriple, tuple, executable, buildEnv, nativePackageOptions, installDlls} from '../../build/native-host.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -45,7 +45,7 @@ else {
  const dirs=['basic','utils','lex','option','ast','parse','flatbuffers','conditional_compilation','modules','macro_pkg','meta_transformation','mangle','sema','chir','codegen','incremental_compilation','frontend'].map(name=>path.resolve(o['frontend-packages'],name+'@cjcj').replaceAll('\\','/'));
  manifest+='\n[target.'+hostTriple+'.bin-dependencies]\npath-option = '+JSON.stringify(dirs)+'\n';
 }
-if(o['runtime-config'])manifest=manifest.replace('output-type = "static"','output-type = "static"\nlink-option = '+JSON.stringify(linkOptions(build,[path.resolve(o['runtime-config']).replaceAll('\\','/')])));
+if(o['runtime-config'])manifest=manifest.replace('output-type = "static"','output-type = "static"\n'+nativePackageOptions(build,[path.resolve(o['runtime-config'])]));
 fs.writeFileSync(build+'/cjpm.toml',manifest);
 const argv=[o.cjpm,'build','--target-dir',build+'/target','-j',jobs,'-V'];
 const started=new Date().toISOString();
@@ -62,13 +62,12 @@ if(o.server){
  const stdxModules=windows?installedStdx:path.resolve(o['json-build'],'modules',tuple,'stdx');
  const stdxLib=windows?installedStdx:path.resolve(o['json-build'],'lib',tuple);
  bins.push(build+'/target/release/cangjie_lsp_core',build+'/target/release/cangjie_lsp_protocol',stdxModules);
- if(!windows)fs.writeFileSync(app+'/runtime-link.rsp','-rpath "$ORIGIN/../lib"\n');
  const link=[o['runtime-config'],o['llvm-shim'],o['llvm-library'],...frontendCxxLibraries(),
  path.join(stdxLib,'libstdx.encoding.json.a'),
  ...(windows?[path.join(stdxLib,'libstdx.encoding.jsonFFI.a')]:[]),
  path.join(stdxLib,'libstdx.serialization.serialization.a')];
- if(!windows)link.push('@'+app+'/runtime-link.rsp');
- fs.writeFileSync(app+'/cjpm.toml','[package]\nname = "cangjie_lsp"\nversion = "0.1.0"\ncjc-version = "1.1.0"\noutput-type = "executable"\nsrc-dir = "src"\nlink-option = '+JSON.stringify(linkOptions(app,link))+'\n[target.'+hostTriple+'.bin-dependencies]\npath-option = '+JSON.stringify(bins)+'\n');
+ if(!windows)link.push('-rpath','$ORIGIN/../lib');
+ fs.writeFileSync(app+'/cjpm.toml','[package]\nname = "cangjie_lsp"\nversion = "0.1.0"\ncjc-version = "1.1.0"\noutput-type = "executable"\nsrc-dir = "src"\n'+nativePackageOptions(app,link,'',true)+'\n[target.'+hostTriple+'.bin-dependencies]\npath-option = '+JSON.stringify(bins)+'\n');
  const argv=[o.cjpm,'build','--target-dir',app+'/target','-j',jobs,'-V'],started=new Date().toISOString();
  const r=spawnSync(argv[0],argv.slice(1),{cwd:app,env:buildEnv(sdk,cjpmSdk),stdio:'inherit'});
  fs.writeFileSync(build+'/server-build-command.json',JSON.stringify({argv,cwd:app,started,ended:new Date().toISOString(),rc:r.status,signal:r.signal,error:r.error?.message??null,inputs:{sdk,frontendPackages:path.resolve(o['frontend-packages']),llvmLibrary:path.resolve(o['llvm-library']),runtimeConfig:path.resolve(o['runtime-config']),jsonBuild:path.resolve(o['json-build']),llvmShim:path.resolve(o['llvm-shim'])}},null,2));

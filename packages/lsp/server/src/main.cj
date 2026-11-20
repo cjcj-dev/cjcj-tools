@@ -77,7 +77,7 @@ func filePath(uri: String): String {
     }
     let result = String.fromUtf8(decoded.toArray())
     if (result.contains("\u{0}")) { throw IllegalArgumentException("NUL in file URI") }
-    return nativeFilePath(result)
+    return documentPath(nativeFilePath(result))
 }
 @When[os == "Windows"]
 func nativeFilePath(decoded: String): String {
@@ -109,18 +109,17 @@ func fileUri(path: String): String {
     }
     return out.toString()
 }
-@When[os == "Windows"]
-func nativeBackslash(byte: UInt8): Bool { byte == 92 }
-@When[os != "Windows"]
-func nativeBackslash(byte: UInt8): Bool { false }
-func parent(path: String): String {
-    let bytes = path.toArray(); var idx = bytes.size - 1
-    while (idx >= 0 && bytes[idx] != 47 && !nativeBackslash(bytes[idx])) { idx-- }
-    return path[0..(idx + 1)]
+// Prefer the filesystem spelling (including Windows case and symlink targets).
+// New buffers need not exist: resolve the existing ancestor, then append the
+// missing components with the host path rules.
+func documentPath(raw: String): String {
+    if (exists(raw)) { return canonicalize(raw).normalize().toString() }
+    let path = Path(raw).normalize()
+    let directory = path.parent.toString()
+    if (directory.isEmpty() || directory == path.toString()) { return path.toString() }
+    return Path(documentPath(directory)).join(path.fileName).toString()
 }
-func locationJson(location: SemanticLocation): JsonValue {
-    return object([("uri", JsonString(fileUri(location.path))), ("range", rangeJson(location.start, location.end))])
-}
+func parent(path: String): String { return Path(path).parent.toString() }
 func send(value: JsonValue): Unit { Console.stdOut.write(EncodeMessage(value.toString())); Console.stdOut.flush() }
 func response(id: JsonValue, result: JsonValue): Unit {
     send(object([("jsonrpc", JsonString("2.0")), ("id", id), ("result", result)]))
@@ -133,6 +132,7 @@ class Server {
     let sdk: String
     let documents = DocumentStore()
     let semantics = HashMap<String, SemanticDocument>()
+    let openedUris = HashMap<String, String>()
     let workspaceRoots = HashSet<String>()
     var compilationDatabase = ""
     var versionedEdits = false
@@ -142,20 +142,29 @@ class Server {
     var exitCode: Int64 = 1
     init(sdk: String) { this.sdk = sdk }
 
+    func documentUri(path: String): String {
+        return openedUris.get(path).getOrDefault({ => fileUri(path) })
+    }
+    func locationJson(location: SemanticLocation): JsonValue {
+        return object([("uri", JsonString(documentUri(location.path))), ("range", rangeJson(location.start, location.end))])
+    }
     func publish(path: String, version: Int64, items: Array<JsonValue>): Unit {
         send(object([("jsonrpc", JsonString("2.0")), ("method", JsonString("textDocument/publishDiagnostics")),
-            ("params", object([("uri", JsonString(fileUri(path))), ("version", JsonInt(version)), ("diagnostics", JsonArray(items))]))]))
+            ("params", object([("uri", JsonString(documentUri(path))), ("version", JsonInt(version)), ("diagnostics", JsonArray(items))]))]))
     }
     func addWorkspace(uri: String): Unit {
-        let directory = canonicalize(filePath(uri)).toString()
+        let directory = filePath(uri)
         if (!FileInfo(directory).isDirectory()) { throw IllegalArgumentException("Workspace is not a directory") }
-        workspaceRoots.add(directory.trimEnd("/") + "/")
+        workspaceRoots.add(directory)
     }
     func inWorkspace(path: String): Bool {
-        let directory = parent(path)
-        if (!exists(directory)) { return false }
-        let actual = canonicalize(directory).toString().trimEnd("/") + "/"
-        for (root in workspaceRoots) { if (actual.startsWith(root)) { return true } }
+        var directory = parent(path)
+        while (!directory.isEmpty()) {
+            if (workspaceRoots.contains(directory)) { return true }
+            let next = parent(directory)
+            if (next == directory) { break }
+            directory = next
+        }
         return false
     }
     func projectDiagnostic(message: String): JsonValue {
@@ -198,13 +207,10 @@ class Server {
             }
         }
         for (snapshot in opened) {
-            if (project.isNone() && inWorkspace(snapshot.uri)) {
+            if (project.isNone() && inWorkspace(snapshot.uri) && exists(parent(snapshot.uri))) {
                 for (entry in Directory.readFrom(parent(snapshot.uri))) {
                     if (entry.isRegular() && entry.name.endsWith(".cj") && !entry.name.endsWith("_test.cj")) {
-                        // parent already ends in a separator. FileInfo may retain
-                        // the extra separator inserted by directory enumeration;
-                        // use the open buffer's lexical parent for one source key.
-                        let path = parent(snapshot.uri) + entry.name
+                        let path = documentPath(Path(parent(snapshot.uri)).join(entry.name).toString())
                         sources[path] = DocumentSnapshot(path, 0, String.fromUtf8(File.readFrom(path)))
                     }
                 }
@@ -336,7 +342,7 @@ class Server {
         }
         if (method == "textDocument/didOpen") {
             let doc = field(params, "textDocument"); let path = filePath(string(doc, "uri"))
-            documents.Open(path, number(doc, "version"), string(doc, "text")); analyze(); return
+            documents.Open(path, number(doc, "version"), string(doc, "text")); openedUris[path] = string(doc, "uri"); analyze(); return
         }
         if (method == "textDocument/didChange") {
             let doc = field(params, "textDocument"); let changes = ArrayList<TextChange>()
@@ -349,7 +355,7 @@ class Server {
         }
         if (method == "textDocument/didClose") {
             let path = filePath(string(field(params, "textDocument"), "uri")); let old = documents.Get(path)
-            documents.Close(path); semantics.remove(path); publish(path, old.version, []); analyze(); return
+            documents.Close(path); semantics.remove(path); publish(path, old.version, []); openedUris.remove(path); analyze(); return
         }
         if (method == "textDocument/completion") {
             // Refresh real disk/configuration inputs; open buffer overlays remain authoritative.
@@ -371,7 +377,7 @@ class Server {
                     ("placeholder", JsonString(transaction.target.name))]))
             } else {
                 transaction.validate()
-                response(id.getOrThrow(), transaction.result(documents.Snapshots()))
+                response(id.getOrThrow(), transaction.result(documents.Snapshots(), { p => documentUri(p) }))
             }
             return
         }
