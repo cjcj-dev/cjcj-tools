@@ -109,7 +109,7 @@ await client('workspace-unopened-siblings',async c=>{
  c.send(note('initialized'));c.send(note('textDocument/didOpen',{textDocument:{uri:useUri,languageId:'cangjie',version:1,text:source}}));
  assert.deepEqual((await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===useUri)).params.diagnostics,[],'LSP_UNOPENED_SIBLING_ANALYZED');
  const query=async(id,method,uri,text)=>{c.send(request(id,method,{textDocument:{uri},position:pos(text,'diskAnswer()'),...(method.endsWith('references')?{context:{includeDeclaration:false}}:{})}));return await c.take(x=>x.id===id);};
- const alias=useUri.replace(/use\.cj$/,process.platform==='win32'?'%55SE.cj':'%75se.cj');
+ const alias=useUri.replace(/use\.cj$/,process.platform==='win32'?'%55SE.cj':'./%75se.cj');
  const found=await query('disk-definition','textDocument/definition',alias,source);
  assert.equal(found.result.uri,diskUri,'LSP_UNOPENED_DEFINITION_TARGET');assert.deepEqual(found.result.range.start,pos(definition,'diskAnswer()'));
  const refs=await query('disk-references','textDocument/references',diskUri,definition);
@@ -125,6 +125,13 @@ await client('workspace-unopened-siblings',async c=>{
  fs.writeFileSync(disk,definition);
  c.send(note('workspace/didChangeWatchedFiles',{changes:[{uri:diskUri,type:2}]}));
  assert.equal((await query('disk-restored','textDocument/definition',useUri,source)).result.uri,diskUri,'LSP_DISK_EVENT_RESTORES_INDEX');
+ // A directory sharing the root's characters is not its descendant.
+ const outside=root+'-sibling';fs.mkdirSync(outside,{recursive:true});
+ fs.writeFileSync(path.join(outside,'definition.cj'),definition);
+ const otherUri=pathToFileURL(path.join(outside,'unsaved.cj')).href;
+ c.send(note('textDocument/didOpen',{textDocument:{uri:otherUri,languageId:'cangjie',version:1,text:source}}));
+ const excluded=await c.take(x=>x.method==='textDocument/publishDiagnostics'&&x.params.uri===otherUri);
+ assert(excluded.params.diagnostics.some(d=>d.severity===1&&d.message.includes('diskAnswer')),'LSP_PREFIX_SIBLING_EXCLUDED');
  c.send(request('workspace-shutdown','shutdown'));assert.equal((await c.take(x=>x.id==='workspace-shutdown')).result,null);c.send(note('exit'));c.end();
 },0);
 
