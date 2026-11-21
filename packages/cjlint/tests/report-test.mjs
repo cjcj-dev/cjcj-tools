@@ -53,7 +53,7 @@ for(const format of ['json','csv','console']){
   else assert.deepEqual(rows.map(r=>r.defectLevel),['SUGGESTIONS','SUGGESTIONS','SUGGESTIONS','SUGGESTIONS','MANDATORY'],'report levels are unchanged');});
  test('duplicate-'+format,duplicate,format,one("G.SER.01: Serialize unencrypted sensitive data 'password passwd' may cause information leak",format==='console'?'error':undefined));
  test('suppressed-'+format,suppressed,format,rows=>assert.equal(rows.length,0,'suppression before final normalization'));
- test('cross-file-'+format,multi,format,(rows,src)=>{assert.equal(rows.length,2,'deduplicate within, not across, files');assert.deepEqual(rows.map(r=>r.file),[src+'/a.cj',src+'/z.cj'],'source file order and identity');assert.ok(rows.every(r=>r.description==="G.SER.01: Serialize unencrypted sensitive data 'password passwd' may cause information leak",format==='console'?'error':undefined));});
+ test('cross-file-'+format,multi,format,(rows,src)=>{assert.equal(rows.length,2,'deduplicate within, not across, files');assert.deepEqual(rows.map(r=>r.file),[src+'/a.cj',src+'/z.cj'],'source file order and identity');assert.ok(rows.every(r=>r.description==="G.SER.01: Serialize unencrypted sensitive data 'password passwd' may cause information leak"));if(format==='console')assert.ok(rows.every(r=>r.severity==='error'),'mandatory findings keep their label across files');});
  test('text-and-ast-files-'+format,scanned,format,(rows,src)=>{assert.deepEqual(rows.map(r=>[r.file,r.line,r.column]),[[src+'/a.cj',1,1],[src+'/a.cj',1,4],[src+'/z.cj',1,1],[src+'/z.cj',1,4]],'real source identity shared by text and AST diagnostics');});
 }
 assert.ok(assertions.length>0,'known report case');
