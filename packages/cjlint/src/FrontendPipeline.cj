@@ -28,7 +28,7 @@ private func macroCompiler(applicationRoot: String): String {
     @When[os != "Windows"]
     let binary = "cjc"
     let driver = FileUtil.JoinPath(FileUtil.JoinPath(sdk, "bin"), binary)
-    if (!exists(driver) || !FileInfo(driver).isRegular()) { fail("Missing SDK macro compiler: " + driver) }
+    if (!exists(driver)) { fail("Missing SDK macro compiler: " + driver) }
     return driver
 }
 
