@@ -25,7 +25,9 @@ func analyzeWithFrontend(options: Options, selected: HashSet<String>, paths: Arr
     if (!invocation.ParseArgs(arguments)) { fail("Frontend rejected compiler arguments") }
     let configuration = invocation.globalOptions
     configuration.executablePath = executable
-    configuration.cangjieHome = options.applicationRoot
+    // Keep the frontend's standard and third-party modules on the same SDK.
+    let analysisRoot = if (options.modules.isEmpty()) { options.applicationRoot } else { options.modules }
+    configuration.cangjieHome = analysisRoot
     configuration.compilePackage = true
     configuration.moduleSrcPath = options.source
     configuration.implicitPrelude = true
@@ -36,8 +38,7 @@ func analyzeWithFrontend(options: Options, selected: HashSet<String>, paths: Arr
         let directory = FileUtil.GetDirPath(path)
         if (!directories.contains(directory)) { configuration.packagePaths.add(directory); directories.add(directory) }
     }
-    let moduleRoot = if (options.modules.isEmpty()) { options.applicationRoot } else { options.modules }
-    let modules = FileUtil.JoinPath(FileUtil.JoinPath(moduleRoot, "modules"), configuration.GetCangjieLibTargetPathName())
+    let modules = FileUtil.JoinPath(FileUtil.JoinPath(analysisRoot, "modules"), configuration.GetCangjieLibTargetPathName())
     if (!exists(modules) || !FileInfo(modules).isDirectory()) { fail("Compiler modules directory is missing: " + modules) }
     configuration.importPaths.add(modules)
     for (directory in options.importPath.split(" ")) {
@@ -48,7 +49,7 @@ func analyzeWithFrontend(options: Options, selected: HashSet<String>, paths: Arr
     }
     let diagnostics = DiagnosticEngine()
     let compiler = CompilerInstance(invocation, diagnostics)
-    compiler.cangjieHome = options.applicationRoot
+    compiler.cangjieHome = analysisRoot
     compiler.cangjieModules = modules
     compiler.isCJLint = true
     compiler.buildTrie = false

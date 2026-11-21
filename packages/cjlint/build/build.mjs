@@ -70,6 +70,11 @@ if(action==='build') {
   if(!analysisSdk)throw Error('install requires --analysis-sdk or a build with an explicit analysis SDK; host modules are not an implicit target');
   const analysisModules=path.join(analysisSdk,'modules');
   if(!fs.statSync(analysisModules).isDirectory())throw Error('Missing analysis SDK modules: '+analysisModules);
+  const flatbuffersModules=path.join('third_party','flatbuffers','modules');
+  const analysisFlatbuffers=path.join(analysisSdk,flatbuffersModules);
+  // std.ast imports this CJO from the same analysis SDK.
+  const flatbuffersCjo=path.join(analysisFlatbuffers,'flatbuffers.cjo');
+  if(!fs.statSync(flatbuffersCjo,{throwIfNoEntry:false})?.isFile())throw Error('Missing analysis SDK dependency: '+flatbuffersCjo);
   metadata.analysis={sdk:analysisSdk,scope:'analysis module input; host runtime remains the recorded host SDK runtime'};
   const prefix=path.resolve(v.prefix);
   fs.mkdirSync(path.join(prefix,'bin'),{recursive:true});fs.mkdirSync(path.join(prefix,'lib'),{recursive:true});
@@ -92,6 +97,7 @@ if(action==='build') {
     if(file.startsWith(metadata.host.sdk+'/')||fs.realpathSync(file)===fs.realpathSync(metadata.frontend.llvmLibrary))fs.copyFileSync(fs.realpathSync(file),path.join(prefix,'lib',name));
   }
   fs.cpSync(analysisModules,path.join(prefix,'modules'),{recursive:true});
+  fs.cpSync(analysisFlatbuffers,path.join(prefix,flatbuffersModules),{recursive:true});
   const runtimeDirectory=path.join(prefix,'runtime/lib/linux_x86_64_cjnative');fs.mkdirSync(runtimeDirectory,{recursive:true});
   const runtimeLink=path.join(runtimeDirectory,'libcangjie-runtime.so');
   if(!fs.existsSync(runtimeLink))fs.symlinkSync('../../../lib/libcangjie-runtime.so',runtimeLink);

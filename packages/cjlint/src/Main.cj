@@ -20,7 +20,7 @@ Usage: cjlint [options]
    -o <path>             Report file or directory (default name cjReport)
    -r <json|csv>         Report format (default json)
    -c <directory>        Directory containing config/
-   -m <directory>        Compiler modules directory
+   -m <directory>        Analysis SDK root containing modules/
    --import-path <path>  Import search path
 "#
 
