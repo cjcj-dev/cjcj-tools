@@ -173,7 +173,7 @@ func run(options: Options): Int64 {
         SourceFile.writeTo(output, renderReport(outputFindings, options.format).toArray())
     } else {
         for (finding in outputFindings) {
-            println("${finding.file}:${finding.begin.line}:${finding.begin.column}: ${finding.description}")
+            println(finding.console())
         }
     }
     return if (invalidEncoding || !frontendSucceeded) { 1 } else { 0 }

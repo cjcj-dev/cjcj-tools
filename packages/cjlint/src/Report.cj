@@ -31,6 +31,10 @@ class Finding {
         }
         description = message + format[start..]
     }
+    func console(): String {
+        let severity = if (diagnosticLevel(kind) == "MANDATORY") { "error" } else { "warning" }
+        return "${file}:${begin.line}:${begin.column}: ${severity}: ${description}"
+    }
     func json(): String {
         return "{\"file\":" + jsonQuote(file) + ",\"line\":${begin.line},\"column\":${begin.column}," +
             "\"endLine\":${end.line},\"endColumn\":${end.column},\"analyzerName\":\"cangjieCodeCheck\"," +
