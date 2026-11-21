@@ -4,13 +4,59 @@ import cjcj::frontend.{CompilerInvocation, CompilerInstance, DiagnosticEngine}
 import cjcj::utils.FileUtil
 import std.collection.*
 import std.fs.File as SourceFile
-import std.fs.{FileInfo, exists}
+import std.fs.{FileInfo, Directory, exists, remove}
+import std.env.{getVariable, getTempDirectory}
+import std.process.execute
 
 func requireFrontendStage(ok: Bool, name: String, diagnostics: DiagnosticEngine): Unit {
     if (!ok || diagnostics.GetErrorCount() != 0) {
         diagnostics.EmitCategoryGroup()
         diagnostics.ReportErrorAndWarningCount()
         fail("Frontend ${name} failed")
+    }
+}
+
+// The SDK launcher sets CANGJIE_HOME to its own root. A standalone install
+// without an active SDK uses the compiler SDK selected by its installer.
+// -m supplies analysis modules; it does not select an executable.
+private func macroCompiler(applicationRoot: String): String {
+    let sdk = getVariable("CANGJIE_HOME") ??
+        readJson(FileUtil.JoinPath(applicationRoot, "cjlint-build.json")).field("analysis").field("sdk").text()
+    if (!FileUtil.IsAbsolutePath(sdk)) { fail("Macro compiler SDK must be an absolute directory: " + sdk) }
+    @When[os == "Windows"]
+    let binary = "cjc.exe"
+    @When[os != "Windows"]
+    let binary = "cjc"
+    let driver = FileUtil.JoinPath(FileUtil.JoinPath(sdk, "bin"), binary)
+    if (!exists(driver) || !FileInfo(driver).isRegular()) { fail("Missing SDK macro compiler: " + driver) }
+    return driver
+}
+
+private func compileMacroPackages(compiler: CompilerInstance, applicationRoot: String, output: String): Unit {
+    let opts = compiler.invocation.globalOptions
+    let driver = macroCompiler(applicationRoot)
+    // Runtime binding is relative to the public compiler path (keep bin/cjc
+    // even if it is a symlink), independently of cjlint's own loader/config.
+    opts.executablePath = driver
+    opts.importPaths.add(output, at: 0)
+    var i: Int64 = 0
+    while (i < compiler.srcPkgs.size) {
+        let pkg = compiler.srcPkgs[i]
+        if (!pkg.isMacroPackage) { i++; continue }
+        let args = ArrayList<String>()
+        args.add("--compile-macro")
+        args.add("-o")
+        args.add(output)
+        for (path in opts.importPaths) {
+            args.add("--import-path")
+            args.add(path)
+        }
+        // ParseModule has already applied the input selection. Passing -p
+        // here would rediscover and compile files excluded from lint.
+        for (file in pkg.files) { args.add(file.filePath) }
+        let rc = execute(driver, args.toArray())
+        if (rc != 0) { fail("Macro package " + pkg.fullPackageName + ": " + driver + " exited with " + rc.toString()) }
+        compiler.srcPkgs.remove(at: i)
     }
 }
 
@@ -54,6 +100,7 @@ func analyzeWithFrontend(options: Options, selected: HashSet<String>, paths: Arr
     compiler.isCJLint = true
     compiler.buildTrie = false
     let collected = ArrayList<Finding>()
+    var macroOutput = ""
     var frontendSucceeded = true
     try {
         // Public frontend stage APIs, in CompilerInstance.Compile's actual order.
@@ -69,6 +116,13 @@ func analyzeWithFrontend(options: Options, selected: HashSet<String>, paths: Arr
         for (id in selected) { if (id != "G.DCL.02" && id != "G.FMT.01") { semantic = true } }
         if (semantic) {
             requireFrontendStage(compiler.PerformConditionCompile(), "conditional compilation", diagnostics)
+            for (pkg in compiler.GetSourcePackages()) {
+                if (pkg.isMacroPackage) {
+                    macroOutput = Directory.createTemp(getTempDirectory()).toString()
+                    compileMacroPackages(compiler, options.applicationRoot, macroOutput)
+                    break
+                }
+            }
             requireFrontendStage(compiler.PerformImportPackage(), "package import", diagnostics)
             requireFrontendStage(compiler.PerformMacroExpand(), "macro expansion", diagnostics)
             requireFrontendStage(compiler.PerformIncrementalScopeAnalysis(), "AST diff", diagnostics)
@@ -126,7 +180,10 @@ func analyzeWithFrontend(options: Options, selected: HashSet<String>, paths: Arr
         try { compiler.FreeCHIRData() }
         finally {
             try { compiler.JoinDestroyASTResources() }
-            finally { diagnostics.close() }
+            finally {
+                try { diagnostics.close() }
+                finally { if (!macroOutput.isEmpty()) { remove(macroOutput, recursive: true) } }
+            }
         }
     }
 }

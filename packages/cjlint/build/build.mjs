@@ -68,6 +68,10 @@ if(action==='build') {
   if(hash(metadata.executable)!==metadata.sha256)throw Error('Build product changed before installation');
   const analysisSdk=v['analysis-sdk']?path.resolve(v['analysis-sdk']):metadata.analysis?.sdk;
   if(!analysisSdk)throw Error('install requires --analysis-sdk or a build with an explicit analysis SDK; host modules are not an implicit target');
+  // The recorded SDK also supplies the standalone macro compiler. Keep the
+  // public driver there with its runtime and backend, never copy just its ELF.
+  const analysisCompiler=path.join(analysisSdk,'bin',process.platform==='win32'?'cjc.exe':'cjc');
+  fs.accessSync(analysisCompiler,fs.constants.X_OK);
   const analysisModules=path.join(analysisSdk,'modules');
   if(!fs.statSync(analysisModules).isDirectory())throw Error('Missing analysis SDK modules: '+analysisModules);
   const flatbuffersModules=path.join('third_party','flatbuffers','modules');
@@ -75,7 +79,7 @@ if(action==='build') {
   // std.ast imports this CJO from the same analysis SDK.
   const flatbuffersCjo=path.join(analysisFlatbuffers,'flatbuffers.cjo');
   if(!fs.statSync(flatbuffersCjo,{throwIfNoEntry:false})?.isFile())throw Error('Missing analysis SDK dependency: '+flatbuffersCjo);
-  metadata.analysis={sdk:analysisSdk,scope:'analysis module input; host runtime remains the recorded host SDK runtime'};
+  metadata.analysis={sdk:analysisSdk,scope:'analysis modules and standalone macro compiler SDK; host execution runtime remains separate'};
   const prefix=path.resolve(v.prefix);
   fs.mkdirSync(path.join(prefix,'bin'),{recursive:true});fs.mkdirSync(path.join(prefix,'lib'),{recursive:true});
   fs.copyFileSync(metadata.executable,path.join(prefix,'bin/cjlint'));
