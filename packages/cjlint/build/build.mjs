@@ -41,8 +41,14 @@ if(action==='build') {
   const artifacts=path.resolve(v['frontend-artifacts']);
   const directories=['basic','utils','lex','option','ast','parse','flatbuffers','conditional_compilation','modules',
     'macro_pkg','meta_transformation','mangle','sema','chir','codegen','incremental_compilation','frontend'];
+  // std.ast calls the frontend's macro context adapters in the host image.
+  // ELF needs dynamic symbols (a static definition alone cannot interpose).
+  // PE uses the frontend's registered callback table instead.
+  const macroExports=process.platform==='linux'?['CJ_AST_*','CJ_CheckAddSpace','CJ_GetMacroPosition',
+    'CJ_CheckParentContext','CJ_SetItemInfo','CJ_GetChildMessages'].map(s=>'--export-dynamic-symbol='+s)
+    :process.platform==='darwin'?['-export_dynamic']:[];
   const manifest=fs.readFileSync(path.join(source,'cjpm.toml.in'),'utf8')
-    .replace('@LINK@',quote([configObject,llvmShim,llvmLibrary,'-lstdc++'].join(' ')))
+    .replace('@LINK@',quote([...macroExports,configObject,llvmShim,llvmLibrary,'-lstdc++'].join(' ')))
     .replace('@FRONTEND@',JSON.stringify(directories.map(p=>path.join(artifacts,p+'@cjcj'))));
   fs.writeFileSync(path.join(project,'cjpm.toml'),manifest);
   const cjpmSdk=path.resolve(v['cjpm-sdk']??sdk);
