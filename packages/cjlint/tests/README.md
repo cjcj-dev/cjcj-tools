@@ -6,7 +6,7 @@
 使用正常 CMake 入口构建、安装和打包。HOST_SDK 提供运行工具所需的编译器和
 运行库；ANALYSIS_SDK 提供待分析程序使用的模块，两者分别指定。
 包含宏源包的分析需要能在本机运行的完整编译器 SDK。独立工具默认使用
-安装器在 `config/macro-sdk` 中配置的 HOST_SDK；需保留此 SDK，或通过
+安装器在安装根的 `macro-sdk` 中配置的 HOST_SDK；需保留此 SDK，或通过
 `CANGJIE_HOME` 激活匹配的 SDK。公开 SDK 的 launcher 自动选择自己的
 `bin/cjc`（Windows 为 `bin/cjc.exe`）。`-m` 只改变被分析程序的模块根；
 `-c` 只选择规则配置。宏包从已选源文件编译至私有临时目录，分析结束后删除。

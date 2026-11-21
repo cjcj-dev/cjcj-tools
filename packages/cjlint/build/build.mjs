@@ -91,7 +91,8 @@ if(action==='build') {
   fs.copyFileSync(metadata.executable,path.join(prefix,'bin/cjlint'));
   fs.chmodSync(path.join(prefix,'bin/cjlint'),0o755);
   fs.cpSync(path.join(source,'config'),path.join(prefix,'config'),{recursive:true});
-  fs.writeFileSync(path.join(prefix,'config/macro-sdk'),macroSdk);
+  // This standalone dependency is not a lint rule configuration or an SDK payload.
+  fs.writeFileSync(path.join(prefix,'macro-sdk'),macroSdk);
   // Carry the actual host runtime dependencies; do not mix a target runtime into
   // a host build or copy the old libcjlint/libcangjie-lsp libraries.
   const lddEnv={...process.env,LD_LIBRARY_PATH:[path.join(metadata.host.sdk,'runtime/lib/linux_x86_64_cjnative'),

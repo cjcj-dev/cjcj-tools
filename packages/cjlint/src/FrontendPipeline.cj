@@ -21,7 +21,7 @@ func requireFrontendStage(ok: Bool, name: String, diagnostics: DiagnosticEngine)
 // -m supplies analysis modules; it does not select an executable.
 private func macroCompiler(applicationRoot: String): String {
     let sdk = getVariable("CANGJIE_HOME") ??
-        String.fromUtf8(SourceFile.readFrom(FileUtil.JoinPath(applicationRoot, "config/macro-sdk")))
+        String.fromUtf8(SourceFile.readFrom(FileUtil.JoinPath(applicationRoot, "macro-sdk")))
     if (!FileUtil.IsAbsolutePath(sdk)) { fail("Macro compiler SDK must be an absolute directory: " + sdk) }
     @When[os == "Windows"]
     let binary = "cjc.exe"
