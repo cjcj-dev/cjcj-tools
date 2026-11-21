@@ -68,10 +68,10 @@ if(action==='build') {
   if(hash(metadata.executable)!==metadata.sha256)throw Error('Build product changed before installation');
   const analysisSdk=v['analysis-sdk']?path.resolve(v['analysis-sdk']):metadata.analysis?.sdk;
   if(!analysisSdk)throw Error('install requires --analysis-sdk or a build with an explicit analysis SDK; host modules are not an implicit target');
-  // The recorded SDK also supplies the standalone macro compiler. Keep the
-  // public driver there with its runtime and backend, never copy just its ELF.
-  const analysisCompiler=path.join(analysisSdk,'bin',process.platform==='win32'?'cjc.exe':'cjc');
-  fs.accessSync(analysisCompiler,fs.constants.X_OK);
+  // Macro libraries execute on the host. The analysis SDK may contain only
+  // target modules. Keep the public host driver with its runtime and backend.
+  const macroSdk=metadata.host.sdk;
+  fs.accessSync(path.join(macroSdk,'bin',process.platform==='win32'?'cjc.exe':'cjc'),fs.constants.X_OK);
   const analysisModules=path.join(analysisSdk,'modules');
   if(!fs.statSync(analysisModules).isDirectory())throw Error('Missing analysis SDK modules: '+analysisModules);
   const flatbuffersModules=path.join('third_party','flatbuffers','modules');
@@ -79,12 +79,13 @@ if(action==='build') {
   // std.ast imports this CJO from the same analysis SDK.
   const flatbuffersCjo=path.join(analysisFlatbuffers,'flatbuffers.cjo');
   if(!fs.statSync(flatbuffersCjo,{throwIfNoEntry:false})?.isFile())throw Error('Missing analysis SDK dependency: '+flatbuffersCjo);
-  metadata.analysis={sdk:analysisSdk,scope:'analysis modules and standalone macro compiler SDK; host execution runtime remains separate'};
+  metadata.analysis={sdk:analysisSdk,scope:'analysis module input; host runtime remains the recorded host SDK runtime'};
   const prefix=path.resolve(v.prefix);
   fs.mkdirSync(path.join(prefix,'bin'),{recursive:true});fs.mkdirSync(path.join(prefix,'lib'),{recursive:true});
   fs.copyFileSync(metadata.executable,path.join(prefix,'bin/cjlint'));
   fs.chmodSync(path.join(prefix,'bin/cjlint'),0o755);
   fs.cpSync(path.join(source,'config'),path.join(prefix,'config'),{recursive:true});
+  fs.writeFileSync(path.join(prefix,'config/macro-sdk'),macroSdk);
   // Carry the actual host runtime dependencies; do not mix a target runtime into
   // a host build or copy the old libcjlint/libcangjie-lsp libraries.
   const lddEnv={...process.env,LD_LIBRARY_PATH:[path.join(metadata.host.sdk,'runtime/lib/linux_x86_64_cjnative'),

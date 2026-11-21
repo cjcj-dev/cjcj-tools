@@ -21,7 +21,7 @@ func requireFrontendStage(ok: Bool, name: String, diagnostics: DiagnosticEngine)
 // -m supplies analysis modules; it does not select an executable.
 private func macroCompiler(applicationRoot: String): String {
     let sdk = getVariable("CANGJIE_HOME") ??
-        readJson(FileUtil.JoinPath(applicationRoot, "cjlint-build.json")).field("analysis").field("sdk").text()
+        String.fromUtf8(SourceFile.readFrom(FileUtil.JoinPath(applicationRoot, "config/macro-sdk")))
     if (!FileUtil.IsAbsolutePath(sdk)) { fail("Macro compiler SDK must be an absolute directory: " + sdk) }
     @When[os == "Windows"]
     let binary = "cjc.exe"
@@ -32,7 +32,8 @@ private func macroCompiler(applicationRoot: String): String {
     return driver
 }
 
-private func compileMacroPackages(compiler: CompilerInstance, applicationRoot: String, output: String): Unit {
+private func compileMacroPackages(compiler: CompilerInstance, applicationRoot: String, output: String,
+    userImports: ArrayList<String>): Unit {
     let opts = compiler.invocation.globalOptions
     let driver = macroCompiler(applicationRoot)
     // Runtime binding is relative to the public compiler path (keep bin/cjc
@@ -47,7 +48,10 @@ private func compileMacroPackages(compiler: CompilerInstance, applicationRoot: S
         args.add("--compile-macro")
         args.add("-o")
         args.add(output)
-        for (path in opts.importPaths) {
+        args.add("--import-path")
+        args.add(output)
+        // Standard modules for an executable macro belong to its host compiler.
+        for (path in userImports) {
             args.add("--import-path")
             args.add(path)
         }
@@ -87,10 +91,13 @@ func analyzeWithFrontend(options: Options, selected: HashSet<String>, paths: Arr
     let modules = FileUtil.JoinPath(FileUtil.JoinPath(analysisRoot, "modules"), configuration.GetCangjieLibTargetPathName())
     if (!exists(modules) || !FileInfo(modules).isDirectory()) { fail("Compiler modules directory is missing: " + modules) }
     configuration.importPaths.add(modules)
+    let userImports = ArrayList<String>()
     for (directory in options.importPath.split(" ")) {
         if (!directory.isEmpty()) {
             if (!exists(directory) || !FileInfo(directory).isDirectory()) { fail("Import directory is missing: " + directory) }
-            configuration.importPaths.add(FileUtil.GetAbsPath(directory) ?? directory)
+            let absolute = FileUtil.GetAbsPath(directory) ?? directory
+            configuration.importPaths.add(absolute)
+            userImports.add(absolute)
         }
     }
     let diagnostics = DiagnosticEngine()
@@ -119,7 +126,7 @@ func analyzeWithFrontend(options: Options, selected: HashSet<String>, paths: Arr
             for (pkg in compiler.GetSourcePackages()) {
                 if (pkg.isMacroPackage) {
                     macroOutput = Directory.createTemp(getTempDirectory()).toString()
-                    compileMacroPackages(compiler, options.applicationRoot, macroOutput)
+                    compileMacroPackages(compiler, options.applicationRoot, macroOutput, userImports)
                     break
                 }
             }
