@@ -42,7 +42,8 @@ public let BUILD_SCRIPT_CMD_PRE: Array<String> = ["check", "update", "tree", "ru
 public let BUILD_SCRIPT_CMD_POST: Array<String> = ["check", "update", "tree", "run"]
 public let DEBUG_CMD: Array<String> = ["run", "clean"]
 public let VERBOSE_CMD: Array<String> = ["tree", "run"]
-public let CROSS_CMD: Array<String> = ["tree"]
+// commands whose build-script pre-parse accepts --target (run: wasm32-wasi only)
+public let CROSS_CMD: Array<String> = ["tree", "run"]
 @When[os == "Linux" || os == "macOS"]
 public const BUILD_SCRIPT_OUTPUT: String = "build-script"
 @When[os == "Windows"]

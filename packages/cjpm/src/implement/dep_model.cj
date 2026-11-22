@@ -993,6 +993,12 @@ class DepModel {
         }
 
         let allTargetMacros: String = targetConfigMap[crossCompileTarget].commonTargetInfo.allTargetMacros
+        // Macro packages run on the host (lib-macro_*.so); a wasm macro library cannot be loaded by cjc.
+        if (isWasmCrossCompile() && !allTargetMacros.isEmpty()) {
+            eprintln(wasmUnsupportedFeatureMessage(
+                "field 'target.${crossCompileTarget}.${COMPILE_TARGET_MACROS}' in ${getPath(pkg.path, CONFIG_FILE_NAME)}"))
+            return false
+        }
         if (!allTargetMacros.isEmpty()) {
             if (allTargetMacros != "all") {
                 eprintln("Error: the 'target.${crossCompileTarget}.${COMPILE_TARGET_MACROS}' field " +

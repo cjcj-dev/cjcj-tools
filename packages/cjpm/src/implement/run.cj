@@ -36,7 +36,12 @@ public func doRun(runConfig: RunConfig): Bool {
         Path(runConfig.targetPath).join(BIN).toString()
     }
 
-    runConfig.filePath = Path(binPath).join(makeExeName(runConfig.name)).toString()
+    let exeName = if (runConfig.target.isEmpty()) {
+        makeExeName(runConfig.name)
+    } else {
+        makeTargetExeName(runConfig.name, runConfig.target)
+    }
+    runConfig.filePath = Path(binPath).join(exeName).toString()
 
     if (!fileExists(runConfig.filePath)) {
         eprintln("Error: can not find the '${runConfig.filePath}' file")
@@ -57,6 +62,10 @@ func getOriginDirForRun(runConfig: RunConfig): Bool {
         if (!setTargetPathForRun(runConfig, tomlInfo, configPath)) {
             return false
         }
+    }
+    if (!runConfig.target.isEmpty()) {
+        // cross artifacts live in <target-dir>/<canonical triple>/{release,debug} (build.cj setFinalTargetDirectory)
+        runConfig.targetPath = Path(runConfig.targetPath).join(runConfig.target).toString()
     }
     runConfig.originTargetPath = runConfig.targetPath
 
@@ -106,8 +115,8 @@ func startRun(runConfig: RunConfig): Bool {
     let envBuilder = EnvironmentBuilder.fromEnvConfig(runConfig.envConfig)
     addLibEnvConfig(envBuilder, runConfig.targetPath, runConfig.globalConfig.nativeDir, runConfig.originTargetPath)
 
-    let exeTool = runConfig.filePath
-    let args = ArrayList<String>()
+    var exeTool = runConfig.filePath
+    var args = ArrayList<String>()
     if (!runConfig.runArgs.isEmpty() && runConfig.newRunArgs.isEmpty()) {
         println("Warning: option '--run-args' will be removed in the future, prefer to use '--' instead")
         args.add(all: extractOptionByString(runConfig.runArgs))
@@ -116,6 +125,13 @@ func startRun(runConfig: RunConfig): Bool {
         args.add(all: runConfig.newRunArgs)
     } else {
         args.add(all: runConfig.newRunArgs)
+    }
+
+    if (!runConfig.target.isEmpty()) {
+        let runner = resolveWasmRunner(runConfig.targetPath) ?? return false
+        let (tool, wasmArgs) = runner.command(runConfig.filePath, args)
+        exeTool = tool
+        args = ArrayList<String>(wasmArgs)
     }
 
     let env = getVariables()

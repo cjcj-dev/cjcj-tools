@@ -968,6 +968,8 @@ public class RunConfig {
     public var isDebug: Bool = false
     public var rootPkgName: String = ""
     public var name: String = "main"
+    // canonical cross target of `cjpm run --target` (wasm32-wasi only), empty for a native run
+    public var target: String = ""
     public var buildArgs: String = ""
     public var runArgs: String = ""
     public var enableFeatures: String = ""

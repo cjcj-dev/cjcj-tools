@@ -73,6 +73,14 @@ public func doTest(unparseArgs: Array<String>, testConfig: TestConfig): Bool {
     if (testConfig.isCrossCompile) {
         targetName = crossCompileTarget
     }
+    if (testConfig.isCrossCompile && isWasmCrossCompile()) {
+        let unittestCjo = wasmStdModulePath("std.unittest") ?? ""
+        if (unittestCjo.isEmpty() || !fileExists(unittestCjo)) {
+            eprintln("Error: running unit tests or benchmarks for ${crossCompileTarget} needs std.unittest built for wasm32-wasi, " +
+                "which this SDK does not provide (missing ${unittestCjo}); 'cjpm test' and 'cjpm bench' are not supported on wasm32-wasi yet")
+            return false
+        }
+    }
     if (!tomlInfo.replaceTargetConfig(DIR_CURRENT, targetName, testConfig.isDebug, true)) {
         return false
     }
@@ -826,7 +834,8 @@ func mkExecTestRunnerCommand(testConfig: TestConfig, pkgFullName: String, runner
     envBuilder.prepend(LD_PATH, testConfig.globalConfig.ldPath)
 
     let cmdList = ArrayList<String>()
-    let output = getOutput(getCanonicalPath(testConfig.globalConfig.targetDir), pkgFullName, testConfig.isCrossCompile)
+    let output = getOutput(getCanonicalPath(testConfig.globalConfig.targetDir), pkgFullName,
+        testConfig.isCrossCompile && !isWasmCrossCompile())
 
     cmdList.add(all: mkUnittestArgs(testConfig, includeJson: true))
     cmdList.add(all: runnerArgs)
@@ -834,12 +843,18 @@ func mkExecTestRunnerCommand(testConfig: TestConfig, pkgFullName: String, runner
     (output, cmdList, envBuilder)
 }
 
+// node:wasi runner for wasm32-wasi test modules; set by execAllTests.
+var wasmTestRunner: ?WasmRunner = None
+
 func mkExecTestPackageCommand(testConfig: TestConfig, pkgFullName: String): TestPackageExecuteCommand {
-    TestPackageExecuteCommand(
-        getOutput(getCanonicalPath(testConfig.globalConfig.targetDir), pkgFullName, testConfig.isCrossCompile),
-        mkUnittestArgs(testConfig, includeJson: false),
-        HashMap<String, String>()
-    )
+    let output = getOutput(getCanonicalPath(testConfig.globalConfig.targetDir), pkgFullName, testConfig.isCrossCompile)
+    let unittestArgs = mkUnittestArgs(testConfig, includeJson: false)
+    if (let Some(runner) <- wasmTestRunner) {
+        // the host test runner launches each wasm test module through node:wasi
+        let (command, args) = runner.command(output, unittestArgs)
+        return TestPackageExecuteCommand(command, args, HashMap<String, String>())
+    }
+    TestPackageExecuteCommand(output, unittestArgs, HashMap<String, String>())
 }
 
 func compileAllTests(linkMap: HashMap<PackageFqName, Array<String>>, testPkgsMap: HashMap<PackageFqName, PkgDescTest>,
@@ -1251,8 +1266,15 @@ func execAllTests(testPkgsMap: HashMap<PackageFqName, PkgDescTest>, testConfig: 
         println("   Executable files at `${Path(testConfig.globalConfig.targetDir).join(UNITTEST_BIN)}`")
     }
 
-    if (testConfig.noRun || testConfig.isCrossCompile) {
+    // Cross-compiled tests are only built, except wasm32-wasi whose test modules run under node:wasi.
+    if (testConfig.noRun || (testConfig.isCrossCompile && !isWasmCrossCompile())) {
         return true
+    }
+    if (isWasmCrossCompile()) {
+        wasmTestRunner = resolveWasmRunner(Path(testConfig.globalConfig.targetDir).join(UNITTEST_BIN).toString())
+        if (wasmTestRunner.isNone()) {
+            return false
+        }
     }
 
     var execTestFlag = true
@@ -1360,6 +1382,10 @@ func verifyConfigForTest(cfg: TomlInfo, testConfig: TestConfig): Bool {
     }
 
     if (!testConfig.profile.ltoValue.isEmpty()) {
+        if (isWasmCrossCompile()) {
+            eprintln(wasmUnsupportedFeatureMessage("field 'profile.test.lto' (LTO)"))
+            return false
+        }
         testConfig.isLto = supportLtoForCurrentTarget()
         testConfig.ltoValue = testConfig.profile.ltoValue
     }

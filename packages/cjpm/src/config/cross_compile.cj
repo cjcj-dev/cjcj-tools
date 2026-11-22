@@ -42,6 +42,9 @@ public func makeTargetExeName(exeName: String, target: String): String {
             return "${processedFileName}.exe"
         }
     }
+    if (isWasmTarget(target) && !processedFileName.endsWith(".wasm")) {
+        return "${processedFileName}.wasm"
+    }
     return processedFileName
 }
 

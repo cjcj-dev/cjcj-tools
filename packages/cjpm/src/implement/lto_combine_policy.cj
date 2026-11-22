@@ -93,6 +93,10 @@ func configureLtoAndCombineBuild(buildConfig: BuildConfig, tomlInfo: TomlInfo): 
     }
 
     if (isLtoConfiguredInToml(tomlInfo)) {
+        if (isWasmCrossCompile()) {
+            eprintln(wasmUnsupportedFeatureMessage("field 'profile.build.lto' (LTO)"))
+            return false
+        }
         buildConfig.isLto = supportLtoForCurrentTarget()
         if (!buildConfig.isLto) {
             println("Warning: configuration failed, field 'profile.build.lto' " +

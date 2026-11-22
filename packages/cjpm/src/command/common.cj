@@ -160,6 +160,18 @@ func crossCompileCheck(target: String): (Bool, Bool) {
     var matched = Regex(REGEXP_CROSS_COMPILE)
     match (matched.find(target)) {
         case Some(_) =>
+            // wasm32-wasi: one canonical spelling for cjc, the target directory and [target.*] lookup;
+            // every other wasm triple is rejected explicitly instead of being passed through.
+            if (isWasmFamilyTarget(target)) {
+                match (canonicalWasmTarget(target)) {
+                    case Some(canonical) =>
+                        crossCompileTarget = canonical
+                        return (true, true)
+                    case None =>
+                        eprintln(unsupportedWasmTargetMessage(target))
+                        return (false, false)
+                }
+            }
             if (target == targetConfigName) {
                 eprintln("Warning: the current platform is '${target}', the '--target' option will be ignored")
                 return (true, false)

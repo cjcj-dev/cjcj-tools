@@ -31,3 +31,19 @@ func appendNativeData(buildConfig: BuildConfig, data: ModuleResolve): Unit {
     }
     return
 }
+
+// wasm32-wasi has no dynamic linking. Only packages compiled for the target are checked, after
+// appendNativeData decided the platforms: macro packages stay host libraries (lib-macro_*.so).
+func checkWasmTargetOutputTypes(buildConfig: BuildConfig, data: ModuleResolve): Bool {
+    if (!buildConfig.isCrossCompile || !isWasmCrossCompile()) {
+        return true
+    }
+    for (item in data.resolves) {
+        if (item.targetPlatform && !buildConfig.packageList.isMacro(item.fullName) && item.outputType == Dynamic) {
+            eprintln(wasmUnsupportedFeatureMessage(
+                "'output-type = \"dynamic\"' of package '${item.fullName}' (no dynamic libraries)"))
+            return false
+        }
+    }
+    return true
+}

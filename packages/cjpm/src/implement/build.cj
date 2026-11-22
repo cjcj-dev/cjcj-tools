@@ -45,6 +45,9 @@ public func doBuild(tomlInfo: TomlInfo, buildConfig: BuildConfig, isScriptDep!: 
     prepareBuild(buildConfig, curResolveData)
     keepPkgVisibilityPkgCheck(buildConfig)
     appendNativeData(buildConfig, curResolveData)
+    if (!checkWasmTargetOutputTypes(buildConfig, curResolveData)) {
+        return false
+    }
 
     if (buildConfig.globalConfig.isAnalysisCompilePerformance) {
         buildConfig.globalConfig.compilePerformanceTargetDir = Path(buildConfig.globalConfig.targetDir).join(COMPILE_PERFORMANCE_DIR).toString()
