@@ -1,4 +1,5 @@
 #!/usr/bin/env zx
+import {windows, frontendCxxLibraries, executable as exe, buildEnv, installDlls} from '../../build/native-host.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -24,10 +25,10 @@ if(command==='build'){
  if(!/^[0-9a-f]{40}$/.test(frontendRef))throw Error('frontend-ref must be a full source commit');
  const revision=spawnSync('git',['rev-parse','HEAD'],{cwd:source,encoding:'utf8'});
  if(revision.status!==0||revision.signal||revision.stdout.trim()!==frontendRef)throw Error('compiler source must be fixed '+frontendRef);
- const env={...process.env,CANGJIE_HOME:sdk,TMPDIR:process.env.TMPDIR??build,
+ const env={...buildEnv(sdk),TMPDIR:process.env.TMPDIR??build,
  LD_LIBRARY_PATH:[sdk+'/runtime/lib/linux_x86_64_cjnative',sdk+'/tools/lib',path.dirname(llvm)].join(':')};
  delete env.LD_PRELOAD;delete env.LD_AUDIT;
- const argv=[path.join(sdk,'bin/cjc'),'-p',path.join(tool,'src'),'--import-path='+libs,'-j'+v.jobs,'--error-count-limit','all',v.type==='debug'?'-g':'-O2'];
+ const argv=[exe(path.join(sdk,'bin/cjc')),'-p',path.join(tool,'src'),'--import-path='+libs,'-j'+v.jobs,'--error-count-limit','all',v.type==='debug'?'-g':'-O2'];
  // Link the compiler's existing Cangjie libraries, including subpackages.
  // Native support is exactly the compiler's preexisting LLVM/OS shim; there
  // is no C++ cjcompat, libcangjie-lsp or compatibility business layer.
@@ -41,20 +42,24 @@ if(command==='build'){
   }
  }
  const runtime=path.resolve(v['runtime-config']??path.join(source,'runtime_shim/cjc_runtime_config.o'));
- const links=['--start-group',...archives,'--end-group',runtime,shim,llvm,'-lstdc++'];
- argv.push('--link-options',links.join(' '),'-o',path.join(build,'cjcompat'));
+ const links=['--start-group',...archives,'--end-group',runtime,shim,llvm,...frontendCxxLibraries()];
+ if(windows)for(const input of links)argv.push('--link-option',input);
+ else argv.push('--link-options',links.join(' '));
+ argv.push('-o',exe(path.join(build,'cjcompat')));
  const ownRevision=spawnSync('git',['rev-parse','HEAD'],{cwd:tool,encoding:'utf8'});
  const toolsRevision=v['tools-revision']??(ownRevision.status===0?ownRevision.stdout.trim():null);
  if(toolsRevision!==null&&!/^[0-9a-f]{40}$/.test(toolsRevision))throw Error('tools revision must be a full Git SHA');
  const inputs={toolsRevision,compilerSource:source,compilerRevision:revision.stdout.trim(),libs,sdk,runtime,shim,llvm,archives,type:v.type,jobs:Number(v.jobs),scope:'host; target runtime rebuild separate'};
  fs.writeFileSync(path.join(build,'inputs.json'),JSON.stringify(inputs,null,2)+'\n');
  run(argv,tool,env);
- const executable=path.join(build,'cjcompat');
+ const executable=exe(path.join(build,'cjcompat'));
  inputs.executable={bytes:fs.statSync(executable).size,sha256:createHash('sha256').update(fs.readFileSync(executable)).digest('hex')};
  fs.writeFileSync(path.join(build,'inputs.json'),JSON.stringify(inputs,null,2)+'\n');
 }else if(command==='install'){
  const prefix=required('prefix');fs.mkdirSync(path.join(prefix,'bin'),{recursive:true});
- fs.copyFileSync(path.join(build,'cjcompat'),path.join(prefix,'bin/cjcompat'));fs.chmodSync(path.join(prefix,'bin/cjcompat'),0o755);
+ const product=exe(path.join(build,'cjcompat'));
+ fs.copyFileSync(product,exe(path.join(prefix,'bin/cjcompat')));fs.chmodSync(exe(path.join(prefix,'bin/cjcompat')),0o755);
+ if(windows){const {sdk,llvm}=JSON.parse(fs.readFileSync(path.join(build,'inputs.json')));installDlls({sdk,llvm,images:[product],prefix});}
  fs.mkdirSync(path.join(prefix,'share/cjcompat'),{recursive:true});
  fs.copyFileSync(path.join(build,'inputs.json'),path.join(prefix,'share/cjcompat/build-inputs.json'));
 }else if(command==='package'){

@@ -11,6 +11,12 @@ import cjcj::basic.DiagnosticEngine as BasicDiagnosticEngine
 import cjcj::basic.{Diagnostic, DiagnosticHandler, DiagHandlerKind, DiagSeverity}
 import cjcj::frontend.{CompilerInvocation, CompilerInstance, CompileStage, DiagnosticEngine, SrcCodeCacheInfo}
 
+@When[os == "Windows"]
+func sdkCompilerEntry(sdk: String): String { sdk + "/bin/cjc.exe" }
+@When[os != "Windows"]
+func sdkCompilerEntry(sdk: String): String { sdk + "/bin/cjc" }
+
+
 public class SemanticLocation {
     public let path: String
     public let start: ProtocolPosition
@@ -85,13 +91,13 @@ public class SemanticDocument {
         let invocation = CompilerInvocation()
         let args = ArrayList<String>(compilerArguments)
         if (args.isEmpty()) {
-            args.add(targetSdk + "/bin/cjc"); args.add("--output-type=staticlib")
+            args.add(sdkCompilerEntry(targetSdk)); args.add("--output-type=staticlib")
             for (directory in importPaths) { args.add("--import-path=" + directory) }
             args.add(snapshot.uri)
             for (peer in companions) { if (peer.uri != snapshot.uri) { args.add(peer.uri) } }
         }
         if (!invocation.ParseArgs(args)) { throw IllegalArgumentException("Invalid frontend arguments") }
-        invocation.globalOptions.executablePath = targetSdk + "/bin/cjc"
+        invocation.globalOptions.executablePath = sdkCompilerEntry(targetSdk)
         // --sdk selects the analysis modules independently of the host process
         // and of a symlinked compiler entry. DetectCangjieHome realpaths argv0.
         invocation.globalOptions.cangjieHome = targetSdk

@@ -207,7 +207,7 @@ class RenameTransaction {
         } }
         if (beforeKeys.size != after.size) { throw IllegalArgumentException("Rename changed the reference graph") }
     }
-    func result(opened: Array<DocumentSnapshot>): JsonValue {
+    func result(opened: Array<DocumentSnapshot>, documentUri: (String) -> String): JsonValue {
         let versions = HashMap<String, Int64>()
         for (snapshot in opened) {
             versions[snapshot.uri] = snapshot.version
@@ -227,7 +227,7 @@ class RenameTransaction {
             }
             if (!items.isEmpty()) {
                 let version: JsonValue = if (versions.contains(path)) { JsonInt(versions[path]) } else { JsonNull() }
-                changes.add(object([("textDocument", object([("uri", JsonString(fileUri(path))), ("version", version)])), ("edits", JsonArray(items.toArray()))]))
+                changes.add(object([("textDocument", object([("uri", JsonString(documentUri(path))), ("version", version)])), ("edits", JsonArray(items.toArray()))]))
             }
         }
         return object([("documentChanges", JsonArray(changes.toArray()))])

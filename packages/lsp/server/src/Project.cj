@@ -73,11 +73,11 @@ class ProjectGraph {
         let rows = JsonValue.fromStr(String.fromUtf8(File.readFrom(database))).asArray().getItems()
         if (rows.isEmpty()) { throw IllegalArgumentException("Empty compilation database") }
         for (row in rows) {
-            let directory = canonicalize(string(row, "directory")).toString()
+            let directory = canonicalize(string(row, "directory")).normalize().toString()
             let arguments = field(row, "arguments").asArray().getItems().map { value => value.asString().getValue() }
             if (arguments.isEmpty()) { throw IllegalArgumentException("Empty compiler arguments") }
             let rawFile = string(row, "file")
-            let file = canonicalize(if (Path(rawFile).isAbsolute()) { rawFile } else { Path(directory).join(rawFile).toString() }).toString()
+            let file = canonicalize(if (Path(rawFile).isAbsolute()) { rawFile } else { Path(directory).join(rawFile).toString() }).normalize().toString()
             let key = directory + "\u{0}" + field(row, "arguments").toString()
             if (!commands.contains(key)) { commands[key] = ProjectCommand(directory, arguments.toArray()) }
             let command = commands[key]

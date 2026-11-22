@@ -1,4 +1,5 @@
 #!/usr/bin/env zx
+import {windows, frontendCxxLibraries, hostTriple, executable as exe, buildEnv, nativePackageOptions, installDlls} from '../../build/native-host.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -37,7 +38,6 @@ if(action==='build') {
   const configObject=path.resolve(v['frontend-runtime-object']);
   const llvmShim=path.resolve(v['llvm-shim']),llvmLibrary=path.resolve(v['llvm-library']);
   for(const file of [configObject,llvmShim,llvmLibrary])if(!fs.statSync(file).isFile())throw Error('Missing frontend infrastructure input: '+file);
-  const quote=x=>JSON.stringify(x);
   const artifacts=path.resolve(v['frontend-artifacts']);
   const directories=['basic','utils','lex','option','ast','parse','flatbuffers','conditional_compilation','modules',
     'macro_pkg','meta_transformation','mangle','sema','chir','codegen','incremental_compilation','frontend'];
@@ -48,21 +48,22 @@ if(action==='build') {
     'CJ_CheckParentContext','CJ_SetItemInfo','CJ_GetChildMessages'].map(s=>'--export-dynamic-symbol='+s)
     :process.platform==='darwin'?['-export_dynamic']:[];
   const manifest=fs.readFileSync(path.join(source,'cjpm.toml.in'),'utf8')
-    .replace('@LINK@',quote([...macroExports,configObject,llvmShim,llvmLibrary,'-lstdc++'].join(' ')))
+    .replace('@TARGET@',hostTriple)
+    .replace('@OPTIONS@',()=>nativePackageOptions(project,[...macroExports,configObject,llvmShim,llvmLibrary,...frontendCxxLibraries()],'-O2'))
     .replace('@FRONTEND@',JSON.stringify(directories.map(p=>path.join(artifacts,p+'@cjcj'))));
   fs.writeFileSync(path.join(project,'cjpm.toml'),manifest);
   const cjpmSdk=path.resolve(v['cjpm-sdk']??sdk);
-  const cjc=path.join(sdk,'bin/cjc'),cjpm=path.join(cjpmSdk,'tools/bin/cjpm');
-  const env={...process.env,CANGJIE_HOME:sdk,PATH:path.join(sdk,'bin')+path.delimiter+process.env.PATH,
+  const cjc=exe(path.join(sdk,'bin/cjc')),cjpm=exe(path.join(cjpmSdk,'tools/bin/cjpm'));
+  const env={...buildEnv(sdk,cjpmSdk),
     LD_LIBRARY_PATH:[path.join(cjpmSdk,'runtime/lib/linux_x86_64_cjnative'),path.join(cjpmSdk,'lib/linux_x86_64_cjnative'),path.join(cjpmSdk,'third_party/llvm/lib'),path.join(cjpmSdk,'tools/lib')].join(path.delimiter)};
   delete env.LD_PRELOAD;delete env.LD_AUDIT;
   // CJPM derives the real sema subpackage link closure from the supplied CJO
   // metadata, exactly as the normal shared frontend producer's consumer does.
   run('cangjie-build',[cjpm,'build','--target-dir',path.join(build,'target'),'-j',v.jobs],{cwd:project,env});
-  const candidates=['target/release/bin/cjlint','target/release/bin/main'].map(p=>path.join(build,p));
+  const candidates=['target/release/bin/cjlint','target/release/bin/main'].map(p=>exe(path.join(build,p)));
   const executable=candidates.find(p=>fs.existsSync(p));
   if(!executable)throw Error('Normal cjpm build did not produce cjlint executable');
-  run('relocatable-loader-path',['patchelf','--set-rpath','$ORIGIN/../lib',executable]);
+  if(!windows)run('relocatable-loader-path',['patchelf','--set-rpath','$ORIGIN/../lib',executable]);
   const metadata={tool:'cjlint',language:'Cangjie',reference:'271b2f4c20be309205eca5e58bb09ffa24727a64',
     frontend:{ref:v['frontend-ref'],source:frontend,artifacts:v['frontend-artifacts'],runtimeObject:configObject,llvmShim,llvmLibrary},host:{sdk,compiler:cjc,sha256:hash(cjc)},packageManager:{sdk:cjpmSdk,executable:cjpm},
     executable,sha256:hash(executable),qualification:'host development; complete rule and target-runtime qualification pending'};
@@ -88,13 +89,16 @@ if(action==='build') {
   metadata.analysis={sdk:analysisSdk,scope:'analysis module input; host runtime remains the recorded host SDK runtime'};
   const prefix=path.resolve(v.prefix);
   fs.mkdirSync(path.join(prefix,'bin'),{recursive:true});fs.mkdirSync(path.join(prefix,'lib'),{recursive:true});
-  fs.copyFileSync(metadata.executable,path.join(prefix,'bin/cjlint'));
-  fs.chmodSync(path.join(prefix,'bin/cjlint'),0o755);
+  fs.copyFileSync(metadata.executable,exe(path.join(prefix,'bin/cjlint')));
+  fs.chmodSync(exe(path.join(prefix,'bin/cjlint')),0o755);
   fs.cpSync(path.join(source,'config'),path.join(prefix,'config'),{recursive:true});
   // This standalone dependency is not a lint rule configuration or an SDK payload.
   fs.writeFileSync(path.join(prefix,'macro-sdk'),macroSdk);
   // Carry the actual host runtime dependencies; do not mix a target runtime into
   // a host build or copy the old libcjlint/libcangjie-lsp libraries.
+  if(windows){
+    installDlls({sdk:metadata.host.sdk,images:[metadata.executable],prefix,llvm:metadata.frontend.llvmLibrary,lint:true});
+  }else{
   const lddEnv={...process.env,LD_LIBRARY_PATH:[path.join(metadata.host.sdk,'runtime/lib/linux_x86_64_cjnative'),
     path.join(metadata.host.sdk,'lib/linux_x86_64_cjnative'),path.dirname(metadata.frontend.llvmLibrary)].join(path.delimiter)};
   delete lddEnv.LD_PRELOAD;delete lddEnv.LD_AUDIT;
@@ -108,11 +112,12 @@ if(action==='build') {
     if(name.includes('cjlint')||name.includes('cangjie-lsp'))throw Error('Old C++ lint dependency is forbidden');
     if(file.startsWith(metadata.host.sdk+'/')||fs.realpathSync(file)===fs.realpathSync(metadata.frontend.llvmLibrary))fs.copyFileSync(fs.realpathSync(file),path.join(prefix,'lib',name));
   }
-  fs.cpSync(analysisModules,path.join(prefix,'modules'),{recursive:true});
-  fs.cpSync(analysisFlatbuffers,path.join(prefix,flatbuffersModules),{recursive:true});
   const runtimeDirectory=path.join(prefix,'runtime/lib/linux_x86_64_cjnative');fs.mkdirSync(runtimeDirectory,{recursive:true});
   const runtimeLink=path.join(runtimeDirectory,'libcangjie-runtime.so');
   if(!fs.existsSync(runtimeLink))fs.symlinkSync('../../../lib/libcangjie-runtime.so',runtimeLink);
+  }
+  fs.cpSync(analysisModules,path.join(prefix,'modules'),{recursive:true});
+  fs.cpSync(analysisFlatbuffers,path.join(prefix,flatbuffersModules),{recursive:true});
   fs.writeFileSync(path.join(prefix,'cjlint-build.json'),JSON.stringify(metadata,null,2)+'\n');
   console.log(`installed ${prefix}`);
 }

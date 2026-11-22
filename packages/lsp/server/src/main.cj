@@ -9,13 +9,33 @@ import cangjie_lsp_core.*
 import cangjie_lsp_protocol.*
 import cjcj::basic.DiagSeverity
 
-// Linux host stdio reads bytes, not ConsoleReader's line-oriented buffer.
+// JSON-RPC lengths count bytes. The Windows CRT defaults pipes to text mode.
+@When[os == "Windows"]
+foreign func _setmode(fd: Int32, mode: Int32): Int32
+@When[os == "Windows"]
+foreign func _read(fd: Int32, buffer: CPointer<UInt8>, count: UInt32): Int32
+@When[os == "Windows"]
+func prepareStdio(): Unit {
+    let input = unsafe { _setmode(0, 0x8000) }
+    let output = unsafe { _setmode(1, 0x8000) }
+    if (input < 0 || output < 0) {
+        throw IllegalStateException("Cannot select binary stdio")
+    }
+}
+@When[os != "Windows"]
+func prepareStdio(): Unit {}
+@When[os != "Windows"]
 foreign func read(fd: Int32, buffer: CPointer<UInt8>, count: UIntNative): IntNative
+
+@When[os == "Windows"]
+func readBytes(pointer: CPointer<UInt8>, size: Int64): Int64 { Int64(unsafe { _read(0, pointer, UInt32(size)) }) }
+@When[os != "Windows"]
+func readBytes(pointer: CPointer<UInt8>, size: Int64): Int64 { Int64(unsafe { read(0, pointer, UIntNative(size)) }) }
 
 func readInput(buffer: Array<UInt8>): Int64 {
     let handle = unsafe { acquireArrayRawData(buffer) }
     try {
-        let count = unsafe { read(0, handle.pointer, UIntNative(buffer.size)) }
+        let count = readBytes(handle.pointer, buffer.size)
         if (count < 0) { throw IllegalStateException("stdin read failed") }
         return Int64(count)
     } finally { unsafe { releaseArrayRawData(handle) } }
@@ -57,26 +77,49 @@ func filePath(uri: String): String {
     }
     let result = String.fromUtf8(decoded.toArray())
     if (result.contains("\u{0}")) { throw IllegalArgumentException("NUL in file URI") }
-    return result
+    return documentPath(nativeFilePath(result))
 }
+@When[os == "Windows"]
+func nativeFilePath(decoded: String): String {
+    let bytes = decoded.toArray()
+    if (bytes.size < 4 || bytes[0] != 47 || !driveLetter(bytes[1]) || bytes[2] != 58 || bytes[3] != 47) {
+        throw IllegalArgumentException("Expected local drive in Windows file URI")
+    }
+    return decoded[1..].replace("/", "\\")
+}
+@When[os != "Windows"]
+func nativeFilePath(decoded: String): String { decoded }
+func driveLetter(byte: UInt8): Bool { (byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122) }
+@When[os == "Windows"]
+func uriPath(path: String): String { "/" + path.replace("\\", "/") }
+@When[os != "Windows"]
+func uriPath(path: String): String { path }
 func fileUri(path: String): String {
     let out = StringBuilder(); out.append("file://")
     let digits = "0123456789ABCDEF".toArray()
-    for (byte in path.toArray()) {
+    let encodedPath = uriPath(path)
+    let localDrive = encodedPath != path
+    let bytes = encodedPath.toArray()
+    for (i in 0..bytes.size) {
+        let byte = bytes[i]
         if ((byte >= 65 && byte <= 90) || (byte >= 97 && byte <= 122) || (byte >= 48 && byte <= 57) ||
+            (i == 2 && byte == 58 && driveLetter(bytes[1]) && bytes.size > 3 && bytes[3] == 47 && localDrive) ||
             byte == 47 || byte == 45 || byte == 46 || byte == 95 || byte == 126) { out.append(String.fromUtf8([byte])) }
         else { out.append("%" + String.fromUtf8([digits[Int64(byte / 16)], digits[Int64(byte % 16)]])) }
     }
     return out.toString()
 }
-func parent(path: String): String {
-    let bytes = path.toArray(); var idx = bytes.size - 1
-    while (idx >= 0 && bytes[idx] != 47) { idx-- }
-    return path[0..(idx + 1)]
+// Prefer the filesystem spelling (including Windows case and symlink targets).
+// New buffers need not exist: resolve the existing ancestor, then append the
+// missing components with the host path rules.
+func documentPath(raw: String): String {
+    if (exists(raw)) { return canonicalize(raw).normalize().toString() }
+    let path = Path(raw).normalize()
+    let directory = path.parent.toString()
+    if (directory.isEmpty() || directory == path.toString()) { return path.toString() }
+    return Path(documentPath(directory)).join(path.fileName).toString()
 }
-func locationJson(location: SemanticLocation): JsonValue {
-    return object([("uri", JsonString(fileUri(location.path))), ("range", rangeJson(location.start, location.end))])
-}
+func parent(path: String): String { return Path(path).parent.toString() }
 func send(value: JsonValue): Unit { Console.stdOut.write(EncodeMessage(value.toString())); Console.stdOut.flush() }
 func response(id: JsonValue, result: JsonValue): Unit {
     send(object([("jsonrpc", JsonString("2.0")), ("id", id), ("result", result)]))
@@ -89,6 +132,7 @@ class Server {
     let sdk: String
     let documents = DocumentStore()
     let semantics = HashMap<String, SemanticDocument>()
+    let openedUris = HashMap<String, String>()
     let workspaceRoots = HashSet<String>()
     var compilationDatabase = ""
     var versionedEdits = false
@@ -98,20 +142,29 @@ class Server {
     var exitCode: Int64 = 1
     init(sdk: String) { this.sdk = sdk }
 
+    func documentUri(path: String): String {
+        return openedUris.get(path).getOrDefault({ => fileUri(path) })
+    }
+    func locationJson(location: SemanticLocation): JsonValue {
+        return object([("uri", JsonString(documentUri(location.path))), ("range", rangeJson(location.start, location.end))])
+    }
     func publish(path: String, version: Int64, items: Array<JsonValue>): Unit {
         send(object([("jsonrpc", JsonString("2.0")), ("method", JsonString("textDocument/publishDiagnostics")),
-            ("params", object([("uri", JsonString(fileUri(path))), ("version", JsonInt(version)), ("diagnostics", JsonArray(items))]))]))
+            ("params", object([("uri", JsonString(documentUri(path))), ("version", JsonInt(version)), ("diagnostics", JsonArray(items))]))]))
     }
     func addWorkspace(uri: String): Unit {
-        let directory = canonicalize(filePath(uri)).toString()
+        let directory = filePath(uri)
         if (!FileInfo(directory).isDirectory()) { throw IllegalArgumentException("Workspace is not a directory") }
-        workspaceRoots.add(directory.trimEnd("/") + "/")
+        workspaceRoots.add(directory)
     }
     func inWorkspace(path: String): Bool {
-        let directory = parent(path)
-        if (!exists(directory)) { return false }
-        let actual = canonicalize(directory).toString().trimEnd("/") + "/"
-        for (root in workspaceRoots) { if (actual.startsWith(root)) { return true } }
+        var directory = parent(path)
+        while (!directory.isEmpty()) {
+            if (workspaceRoots.contains(directory)) { return true }
+            let next = parent(directory)
+            if (next == directory) { break }
+            directory = next
+        }
         return false
     }
     func projectDiagnostic(message: String): JsonValue {
@@ -154,13 +207,10 @@ class Server {
             }
         }
         for (snapshot in opened) {
-            if (project.isNone() && inWorkspace(snapshot.uri)) {
+            if (project.isNone() && inWorkspace(snapshot.uri) && exists(parent(snapshot.uri))) {
                 for (entry in Directory.readFrom(parent(snapshot.uri))) {
                     if (entry.isRegular() && entry.name.endsWith(".cj") && !entry.name.endsWith("_test.cj")) {
-                        // parent already ends in a separator. FileInfo may retain
-                        // the extra separator inserted by directory enumeration;
-                        // use the open buffer's lexical parent for one source key.
-                        let path = parent(snapshot.uri) + entry.name
+                        let path = documentPath(Path(parent(snapshot.uri)).join(entry.name).toString())
                         sources[path] = DocumentSnapshot(path, 0, String.fromUtf8(File.readFrom(path)))
                     }
                 }
@@ -292,7 +342,7 @@ class Server {
         }
         if (method == "textDocument/didOpen") {
             let doc = field(params, "textDocument"); let path = filePath(string(doc, "uri"))
-            documents.Open(path, number(doc, "version"), string(doc, "text")); analyze(); return
+            documents.Open(path, number(doc, "version"), string(doc, "text")); openedUris[path] = string(doc, "uri"); analyze(); return
         }
         if (method == "textDocument/didChange") {
             let doc = field(params, "textDocument"); let changes = ArrayList<TextChange>()
@@ -305,7 +355,7 @@ class Server {
         }
         if (method == "textDocument/didClose") {
             let path = filePath(string(field(params, "textDocument"), "uri")); let old = documents.Get(path)
-            documents.Close(path); semantics.remove(path); publish(path, old.version, []); analyze(); return
+            documents.Close(path); semantics.remove(path); publish(path, old.version, []); openedUris.remove(path); analyze(); return
         }
         if (method == "textDocument/completion") {
             // Refresh real disk/configuration inputs; open buffer overlays remain authoritative.
@@ -327,7 +377,7 @@ class Server {
                     ("placeholder", JsonString(transaction.target.name))]))
             } else {
                 transaction.validate()
-                response(id.getOrThrow(), transaction.result(documents.Snapshots()))
+                response(id.getOrThrow(), transaction.result(documents.Snapshots(), { p => documentUri(p) }))
             }
             return
         }
@@ -378,6 +428,7 @@ class Server {
 
 main(args: Array<String>): Int64 {
     if (args.size != 2 || args[0] != "--sdk") { Console.stdErr.writeln("Usage: cangjie-lsp --sdk <target SDK>"); return 2 }
+    prepareStdio()
     let server = Server(args[1]); let framer = MessageFramer(); let buffer = Array<UInt8>(4096, repeat: 0)
     try {
         while (!server.exiting) {

@@ -2,9 +2,11 @@
 
 `cjprof` analyzes Cangjie heap dumps and records CPU call chains. The command implementation, heap parser, graph analysis, snapshot API, HTTP service, ELF symbols, recorder and report generation are Cangjie source in `cangjie/`. The Java API retains its existing package and model classes.
 
-This producer currently supports Linux x86-64. Select a compiler SDK containing a **matching compiler, std and runtime**. A host development build does not qualify a different target SDK or runtime.
+This producer targets Linux x86-64 and native Windows x64. Select a compiler SDK containing a **matching compiler, std and runtime**. A host development build does not qualify a different target SDK or runtime.
 
 ## Build and install
+
+On Windows select the native JDK (including win32 JNI headers), MinGW C compiler and x64 PE reader. The CLI analyzes saved heap files; Linux perf recording and live signal-based heap dumps return an error. Java loads cjprof-jni.dll from the installed lib directory; keep its dependent DLLs on the process DLL search path.
 
 Dependencies: CMake 3.16+, Node.js, `cjc`, a C compiler, Linux system libraries (`libatomic`, `libstdc++`, `libdl`), a JDK with JNI headers, and the selected Lombok annotation processor for the existing Java API. The C compiler builds only `build/jni-bootstrap.c`, which starts the Cangjie runtime before managed JNI exports can be entered. No C/C++ profiling algorithm is compiled.
 

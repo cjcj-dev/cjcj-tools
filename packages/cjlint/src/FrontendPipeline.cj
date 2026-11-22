@@ -68,7 +68,7 @@ func analyzeWithFrontend(options: Options, selected: HashSet<String>, paths: Arr
     findings: ArrayList<Finding>, controls: DiagnosticControls): Bool {
     let invocation = CompilerInvocation()
     let arguments = ArrayList<String>()
-    let executable = FileUtil.JoinPath(options.applicationRoot, "bin/cjlint")
+    let executable = options.executable
     arguments.add(executable)
     arguments.add("--output-type=staticlib")
     for (path in paths) { arguments.add(path) }
