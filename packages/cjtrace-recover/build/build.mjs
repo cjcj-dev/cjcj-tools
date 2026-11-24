@@ -30,7 +30,7 @@ if (v.help) {
       if (!types[v['build-type']]) throw Error('invalid build type');
       const args = ['cmake', '-S', root, '-B', v['build-dir'], '-G', 'Ninja',
         '-DCMAKE_BUILD_TYPE=' + types[v['build-type']],
-        '-DZX_EXECUTABLE=' + fileURLToPath(import.meta.resolve('zx/cli'))];
+        '-DZX_EXECUTABLE=' + process.execPath];
       for (const [key, cmake] of [['cangjie-sdk', 'CANGJIE_HOME'], ['mangle-source', 'CANGJIE_MANGLE_SOURCE_DIR'],
         ['prefix', 'CMAKE_INSTALL_PREFIX'], ['set-rpath', 'RUNTIME_RPATH']]) {
         if (v[key]) args.push('-D' + cmake + '=' + v[key]);

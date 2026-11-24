@@ -5,7 +5,7 @@ project(cjtrace-recover LANGUAGES NONE)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 include(CangjieTarget)
-find_program(ZX_EXECUTABLE zx REQUIRED)
+find_program(ZX_EXECUTABLE NAMES node zx REQUIRED)
 
 # Reuse the compiler's Cangjie demangler, without bringing the AST/mangler
 # front end into this tool. This is source input, never the old native library.
