@@ -6,8 +6,15 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 
 export const windows = process.platform === 'win32';
-export const hostTriple = windows ? 'x86_64-w64-mingw32' : 'x86_64-unknown-linux-gnu';
-export const tuple = windows ? 'windows_x86_64_cjnative' : 'linux_x86_64_cjnative';
+export function hostTarget(platform = process.platform, arch = process.arch) {
+  const cpu = {x64: 'x86_64', arm64: 'aarch64'}[arch];
+  const abi = {linux: 'unknown-linux-gnu', darwin: 'apple-darwin', win32: 'w64-mingw32'}[platform];
+  if (!cpu || !abi || (platform === 'win32' && arch !== 'x64')) {
+    throw Error('Unsupported native SDK host: '+platform+'/'+arch);
+  }
+  return {hostTriple: cpu+'-'+abi, tuple: (platform === 'win32' ? 'windows' : platform)+'_'+cpu+'_cjnative'};
+}
+export const {hostTriple, tuple} = hostTarget();
 export const executable = file => file + (windows ? '.exe' : '');
 export const dllRoots = sdk => [path.join(sdk,'runtime/lib',tuple), path.join(sdk,'lib',tuple),
   path.join(sdk,'third_party/llvm/bin'), path.join(sdk,'tools/lib'), path.join(sdk,'bin')];
@@ -19,10 +26,22 @@ export function buildEnv(sdk, cjpmSdk=sdk) {
   return env;
 }
 
-export function frontendCxxLibraries() {
-  if (!windows) return ['-lstdc++'];
-  if (!process.env.MINGW_PATH) throw Error('MINGW_PATH is required for the selected Windows C++ runtime');
-  return ['-L'+path.join(process.env.MINGW_PATH,'x86_64-w64-mingw32/lib'),'-lc++','-lunwind'];
+// Windows DLL lookup is already supplied by buildEnv's PATH.
+export function loaderEnv(directories, platform = process.platform) {
+  if (platform === 'win32') return {};
+  return {[platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH']: directories.join(':')};
+}
+
+export function frontendArchives(archives, platform = process.platform) {
+  return platform === 'darwin' ? archives.flatMap(file => ['-force_load', file])
+    : ['--start-group', ...archives, '--end-group'];
+}
+
+export function frontendCxxLibraries(platform = process.platform, mingw = process.env.MINGW_PATH) {
+  if (platform === 'darwin') return ['-lc++'];
+  if (platform !== 'win32') return ['-lstdc++'];
+  if (!mingw) throw Error('MINGW_PATH is required for the selected Windows C++ runtime');
+  return ['-L'+path.join(mingw,'x86_64-w64-mingw32/lib'),'-lc++','-lunwind'];
 }
 
 // CJPM passes compile-option tokens as cjc argv. Keep the response reference

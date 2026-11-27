@@ -1,5 +1,5 @@
 #!/usr/bin/env zx
-import {windows, frontendCxxLibraries, executable as exe, buildEnv, installDlls} from '../../build/native-host.mjs';
+import {windows, tuple, frontendArchives, frontendCxxLibraries, executable as exe, buildEnv, loaderEnv, installDlls} from '../../build/native-host.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -26,7 +26,7 @@ if(command==='build'){
  const revision=spawnSync('git',['rev-parse','HEAD'],{cwd:source,encoding:'utf8'});
  if(revision.status!==0||revision.signal||revision.stdout.trim()!==frontendRef)throw Error('compiler source must be fixed '+frontendRef);
  const env={...buildEnv(sdk),TMPDIR:process.env.TMPDIR??build,
- LD_LIBRARY_PATH:[sdk+'/runtime/lib/linux_x86_64_cjnative',sdk+'/tools/lib',path.dirname(llvm)].join(':')};
+ ...loaderEnv([path.join(sdk,'runtime/lib',tuple),path.join(sdk,'tools/lib'),path.dirname(llvm)])};
  delete env.LD_PRELOAD;delete env.LD_AUDIT;
  const argv=[exe(path.join(sdk,'bin/cjc')),'-p',path.join(tool,'src'),'--import-path='+libs,'-j'+v.jobs,'--error-count-limit','all',v.type==='debug'?'-g':'-O2'];
  // Link the compiler's existing Cangjie libraries, including subpackages.
@@ -42,9 +42,8 @@ if(command==='build'){
   }
  }
  const runtime=path.resolve(v['runtime-config']??path.join(source,'runtime_shim/cjc_runtime_config.o'));
- const links=['--start-group',...archives,'--end-group',runtime,shim,llvm,...frontendCxxLibraries()];
- if(windows)for(const input of links)argv.push('--link-option',input);
- else argv.push('--link-options',links.join(' '));
+ const links=[...frontendArchives(archives),runtime,shim,llvm,...frontendCxxLibraries()];
+ for(const input of links)argv.push('--link-option',input);
  argv.push('-o',exe(path.join(build,'cjcompat')));
  const ownRevision=spawnSync('git',['rev-parse','HEAD'],{cwd:tool,encoding:'utf8'});
  const toolsRevision=v['tools-revision']??(ownRevision.status===0?ownRevision.stdout.trim():null);

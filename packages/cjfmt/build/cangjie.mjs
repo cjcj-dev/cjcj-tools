@@ -1,5 +1,5 @@
 #!/usr/bin/env zx
-import {windows, hostTriple, executable, buildEnv, nativePackageOptions, installDlls} from '../../build/native-host.mjs';
+import {windows, hostTriple, tuple, executable, buildEnv, loaderEnv, nativePackageOptions, installDlls} from '../../build/native-host.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -62,7 +62,8 @@ if(command==='build'){
   .replace('@PACKAGES@',packageOptions.join('\n'));
  await writeChanged(path.join(workspace,'cjpm.toml'),Buffer.from(manifest));
  await writeChanged(path.join(workspace,'cangjie-repo.toml'),Buffer.from('[repository.cache]\npath = \"./cache\"\n'));
- const env={...buildEnv(sdk,cjpmSdk),CJPM_CONFIG:path.join(workspace,'cache'),LD_LIBRARY_PATH:[path.join(cjpmSdk,'runtime/lib/linux_x86_64_cjnative'),path.join(cjpmSdk,'tools/lib'),path.join(cjpmSdk,'third_party/llvm/lib')].join(path.delimiter)};
+ const env={...buildEnv(sdk,cjpmSdk),CJPM_CONFIG:path.join(workspace,'cache'),
+  ...loaderEnv([path.join(cjpmSdk,'runtime/lib',tuple),path.join(cjpmSdk,'tools/lib'),path.join(cjpmSdk,'third_party/llvm/lib')])};
  const args=['build','--incremental','--target-dir',path.join(build,'target'),'-j',values.jobs,'-V'];
  if(values['build-type']==='debug')args.push('-g');
  if(values.coverage)args.push('--coverage');

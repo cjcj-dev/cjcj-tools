@@ -12,7 +12,7 @@ const write=(p,s,mode)=>{fs.mkdirSync(path.dirname(p),{recursive:true});fs.write
 const target=path.join(work,'target-sdk'),host=path.join(work,'host-sdk'),frontend=path.join(work,'frontend');
 for(const sdk of [target,host])write(sdk+'/tools/bin/cjpm',`#!/usr/bin/env node
 import fs from 'node:fs';
-fs.writeFileSync(process.env.CJPM_TEST_RECORD,JSON.stringify({argv:process.argv,home:process.env.CANGJIE_HOME,path:process.env.PATH,loader:process.env.LD_LIBRARY_PATH,selected:${JSON.stringify(sdk)}}));
+fs.writeFileSync(process.env.CJPM_TEST_RECORD,JSON.stringify({argv:process.argv,home:process.env.CANGJIE_HOME,path:process.env.PATH,loader:process.platform==='darwin'?process.env.DYLD_LIBRARY_PATH:process.env.LD_LIBRARY_PATH,selected:${JSON.stringify(sdk)}}));
 process.exit(73);
 `,0o755);
 for(const name of ['parse','option','ast','lex','utils','basic']){
@@ -22,9 +22,7 @@ for(const name of ['parse','option','ast','lex','utils','basic']){
 for(const name of ['runtime.o','shim.o','libLLVM.so'])write(work+'/'+name,'unused fixture');
 const sha='1'.repeat(40);
 for(const tool of ['cjfmt','cjlint']){
- const root=path.join(work,tool),build=path.join(root,'build');
- for(const file of tool==='cjfmt'?['build/build.mjs','build/cangjie.mjs','build/cjpm.toml.in']:['build/build.mjs','cjpm.toml.in'])write(root+'/'+file,fs.readFileSync(source+'/packages/'+tool+'/'+file));
- write(root+'/src/main.cj','main() { println(42) }');
+ const root=path.join(work,tool),build=path.join(source,'packages',tool,'build');
  const common=tool==='cjfmt'?['--frontend-cjo',frontend,'--frontend-lib',frontend]:[
   '--frontend-source',frontend,'--frontend-ref',sha,'--frontend-artifacts',frontend,
   '--frontend-runtime-object',work+'/runtime.o','--llvm-shim',work+'/shim.o','--llvm-library',work+'/libLLVM.so'];

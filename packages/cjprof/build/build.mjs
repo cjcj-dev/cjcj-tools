@@ -1,6 +1,6 @@
 #!/usr/bin/env zx
 // cjprof-only Cangjie producer; never invokes the legacy C++ producer.
-import {windows, executable, buildEnv, installDlls} from '../../build/native-host.mjs';
+import {windows, tuple, executable, buildEnv, loaderEnv, installDlls} from '../../build/native-host.mjs';
 import {profileSources,windowsBootstrap} from './products.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,7 +16,7 @@ const product=executable('cjprof'), implementation='libcjprof-cangjie'+(windows?
 const jni=windows?'cjprof-jni.dll':'libcjprof-jni.so';
 function run(argv) {
   const env={...buildEnv(sdk),
-    LD_LIBRARY_PATH:path.join(sdk,'runtime/lib/linux_x86_64_cjnative')+':'+path.join(sdk,'tools/lib')};
+    ...loaderEnv([path.join(sdk,'runtime/lib',tuple),path.join(sdk,'tools/lib')])};
   const p=spawnSync(argv[0],argv.slice(1),{cwd:root,stdio:'inherit',env});
   if (p.error) throw p.error;
   if (p.status!==0) process.exit(p.status??1);
@@ -40,7 +40,7 @@ if (action==='build') {
   else bootstrap=[process.env.CC??'cc','-std=c11','-D_GNU_SOURCE','-shared','-fPIC','-Wall','-Wextra','-Werror',
     '-I'+path.join(jdk,'include'),'-I'+path.join(jdk,'include','linux'),'-include',runtimeHeader,
     path.join(root,'native','jni-bootstrap.c'),'-L'+build,'-Wl,--no-as-needed','-lcjprof-cangjie',
-    '-L'+path.join(sdk,'runtime','lib','linux_x86_64_cjnative'),'-lcangjie-runtime','-ldl',
+    '-L'+path.join(sdk,'runtime','lib',tuple),'-lcangjie-runtime','-ldl',
     '-Wl,-rpath,$ORIGIN','-o',path.join(build,'libcjprof-jni.so')];
   run(bootstrap);
   const lombok=option('--lombok-jar',process.env.CJPROF_LOMBOK_JAR);

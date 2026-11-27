@@ -13,7 +13,7 @@ function install(build,prefix) {
  fs.mkdirSync(prefix+'/bin',{recursive:true});fs.mkdirSync(prefix+'/lib',{recursive:true});
  fs.copyFileSync(executable(build+'/server/target/release/bin/main'),executable(prefix+'/bin/cangjie-lsp'));fs.chmodSync(executable(prefix+'/bin/cangjie-lsp'),0o755);
  if(windows){installDlls({sdk:facts.inputs.sdk,images:[executable(prefix+'/bin/cangjie-lsp')],prefix,llvm:facts.inputs.llvmLibrary});return;}
- fs.cpSync(facts.inputs.sdk+'/runtime/lib/linux_x86_64_cjnative',prefix+'/lib',{recursive:true,dereference:true});
+ fs.cpSync(path.join(facts.inputs.sdk,'runtime/lib',tuple),prefix+'/lib',{recursive:true,dereference:true});
  fs.copyFileSync(fs.realpathSync(facts.inputs.llvmLibrary),prefix+'/lib/'+path.basename(facts.inputs.llvmLibrary));
 }
 if(o.phase==='install') {
@@ -68,7 +68,8 @@ if(o.server){
  path.join(stdxLib,'libstdx.serialization.serialization.a')];
  // ELF std.ast must call the compiler's macro-context adapters in this
  // executable. Its own C++ entry points expect a different context object.
- if(!windows)link.push('--export-dynamic-symbol=CJ_*','-rpath','$ORIGIN/../lib');
+ if(process.platform==='linux')link.push('--export-dynamic-symbol=CJ_*','-rpath','$ORIGIN/../lib');
+ if(process.platform==='darwin')link.push('-export_dynamic','-rpath','@executable_path/../lib');
  fs.writeFileSync(app+'/cjpm.toml','[package]\nname = "cangjie_lsp"\nversion = "0.1.0"\ncjc-version = "1.1.0"\noutput-type = "executable"\nsrc-dir = "src"\n'+nativePackageOptions(app,link,'',true)+'\n[target.'+hostTriple+'.bin-dependencies]\npath-option = '+JSON.stringify(bins)+'\n');
  const argv=[o.cjpm,'build','--target-dir',app+'/target','-j',jobs,'-V'],started=new Date().toISOString();
  const r=spawnSync(argv[0],argv.slice(1),{cwd:app,env:buildEnv(sdk,cjpmSdk),stdio:'inherit'});

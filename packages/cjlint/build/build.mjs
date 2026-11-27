@@ -1,5 +1,5 @@
 #!/usr/bin/env zx
-import {windows, frontendCxxLibraries, hostTriple, executable as exe, buildEnv, nativePackageOptions, installDlls} from '../../build/native-host.mjs';
+import {windows, frontendCxxLibraries, hostTriple, tuple, executable as exe, buildEnv, loaderEnv, nativePackageOptions, installDlls} from '../../build/native-host.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -46,7 +46,7 @@ if(action==='build') {
   // PE uses the frontend's registered callback table instead.
   const macroExports=process.platform==='linux'?['CJ_AST_*','CJ_CheckAddSpace','CJ_GetMacroPosition',
     'CJ_CheckParentContext','CJ_SetItemInfo','CJ_GetChildMessages'].map(s=>'--export-dynamic-symbol='+s)
-    :process.platform==='darwin'?['-export_dynamic']:[];
+    :process.platform==='darwin'?['-export_dynamic','-rpath','@executable_path/../lib']:[];
   const manifest=fs.readFileSync(path.join(source,'cjpm.toml.in'),'utf8')
     .replace('@TARGET@',hostTriple)
     .replace('@OPTIONS@',()=>nativePackageOptions(project,[...macroExports,configObject,llvmShim,llvmLibrary,...frontendCxxLibraries()],'-O2'))
@@ -55,7 +55,7 @@ if(action==='build') {
   const cjpmSdk=path.resolve(v['cjpm-sdk']??sdk);
   const cjc=exe(path.join(sdk,'bin/cjc')),cjpm=exe(path.join(cjpmSdk,'tools/bin/cjpm'));
   const env={...buildEnv(sdk,cjpmSdk),
-    LD_LIBRARY_PATH:[path.join(cjpmSdk,'runtime/lib/linux_x86_64_cjnative'),path.join(cjpmSdk,'lib/linux_x86_64_cjnative'),path.join(cjpmSdk,'third_party/llvm/lib'),path.join(cjpmSdk,'tools/lib')].join(path.delimiter)};
+    ...loaderEnv([path.join(cjpmSdk,'runtime/lib',tuple),path.join(cjpmSdk,'lib',tuple),path.join(cjpmSdk,'third_party/llvm/lib'),path.join(cjpmSdk,'tools/lib')])};
   delete env.LD_PRELOAD;delete env.LD_AUDIT;
   // CJPM derives the real sema subpackage link closure from the supplied CJO
   // metadata, exactly as the normal shared frontend producer's consumer does.
@@ -63,7 +63,7 @@ if(action==='build') {
   const candidates=['target/release/bin/cjlint','target/release/bin/main'].map(p=>exe(path.join(build,p)));
   const executable=candidates.find(p=>fs.existsSync(p));
   if(!executable)throw Error('Normal cjpm build did not produce cjlint executable');
-  if(!windows)run('relocatable-loader-path',['patchelf','--set-rpath','$ORIGIN/../lib',executable]);
+  if(process.platform==='linux')run('relocatable-loader-path',['patchelf','--set-rpath','$ORIGIN/../lib',executable]);
   const metadata={tool:'cjlint',language:'Cangjie',reference:'271b2f4c20be309205eca5e58bb09ffa24727a64',
     frontend:{ref:v['frontend-ref'],source:frontend,artifacts:v['frontend-artifacts'],runtimeObject:configObject,llvmShim,llvmLibrary},host:{sdk,compiler:cjc,sha256:hash(cjc)},packageManager:{sdk:cjpmSdk,executable:cjpm},
     executable,sha256:hash(executable),qualification:'host development; complete rule and target-runtime qualification pending'};
@@ -98,9 +98,17 @@ if(action==='build') {
   // a host build or copy the old libcjlint/libcangjie-lsp libraries.
   if(windows){
     installDlls({sdk:metadata.host.sdk,images:[metadata.executable],prefix,llvm:metadata.frontend.llvmLibrary,lint:true});
+  }else if(process.platform==='darwin'){
+    const runtimeDirectory=path.join('runtime/lib',tuple);
+    fs.cpSync(path.join(macroSdk,runtimeDirectory),path.join(prefix,'lib'),{recursive:true,dereference:true});
+    const llvm=metadata.frontend.llvmLibrary;
+    fs.copyFileSync(fs.realpathSync(llvm),path.join(prefix,'lib',path.basename(llvm)));
+    fs.mkdirSync(path.join(prefix,runtimeDirectory),{recursive:true});
+    const runtimeLink=path.join(prefix,runtimeDirectory,'libcangjie-runtime.dylib');
+    if(!fs.existsSync(runtimeLink))fs.symlinkSync('../../../lib/libcangjie-runtime.dylib',runtimeLink);
   }else{
-  const lddEnv={...process.env,LD_LIBRARY_PATH:[path.join(metadata.host.sdk,'runtime/lib/linux_x86_64_cjnative'),
-    path.join(metadata.host.sdk,'lib/linux_x86_64_cjnative'),path.dirname(metadata.frontend.llvmLibrary)].join(path.delimiter)};
+  const lddEnv={...process.env,...loaderEnv([path.join(macroSdk,'runtime/lib',tuple),
+    path.join(macroSdk,'lib',tuple),path.dirname(metadata.frontend.llvmLibrary)])};
   delete lddEnv.LD_PRELOAD;delete lddEnv.LD_AUDIT;
   const ldd=spawnSync('ldd',[metadata.executable],{encoding:'utf8',env:lddEnv});
   fs.writeFileSync(path.join(build,'install-ldd.stdout'),ldd.stdout??'');
@@ -112,7 +120,7 @@ if(action==='build') {
     if(name.includes('cjlint')||name.includes('cangjie-lsp'))throw Error('Old C++ lint dependency is forbidden');
     if(file.startsWith(metadata.host.sdk+'/')||fs.realpathSync(file)===fs.realpathSync(metadata.frontend.llvmLibrary))fs.copyFileSync(fs.realpathSync(file),path.join(prefix,'lib',name));
   }
-  const runtimeDirectory=path.join(prefix,'runtime/lib/linux_x86_64_cjnative');fs.mkdirSync(runtimeDirectory,{recursive:true});
+  const runtimeDirectory=path.join(prefix,'runtime/lib',tuple);fs.mkdirSync(runtimeDirectory,{recursive:true});
   const runtimeLink=path.join(runtimeDirectory,'libcangjie-runtime.so');
   if(!fs.existsSync(runtimeLink))fs.symlinkSync('../../../lib/libcangjie-runtime.so',runtimeLink);
   }
