@@ -253,7 +253,6 @@ public let COMMAND_CACHE: ArrayList<CommandInfo> = ArrayList<CommandInfo>()
 public let SHOW_CACHE: ArrayList<PkgInfo> = ArrayList<PkgInfo>()
 public let CJPM_COMPILE_INFO: HashMap<String, Float64> = HashMap<String, Float64>()
 public let CACHE_MUTEX: Mutex = Mutex()
-public var memProcess: Future<Thread> = spawn { => return Thread.currentThread}
 
 // Struct which stores information about used 'cjc' binary
 // 

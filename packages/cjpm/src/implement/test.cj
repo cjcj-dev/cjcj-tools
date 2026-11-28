@@ -534,27 +534,22 @@ func appendLinkOption(option: String): Array<String> {
     return []
 }
 
-// Collect bin-dependencies link options for cjpm test (native + cross bin deps).
-func appendBinOptionForTest(res: ModuleResolve, requires: HashSet<String>, isLto: Bool): ArrayList<String> {
+// A test binary links for one platform, just like a regular compile task.
+func appendBinOptionForTest(binDeps: HashMap<String, BinDeps>, requires: HashSet<String>,
+    isLto: Bool): ArrayList<String> {
     let binOptions = ArrayList<String>()
-
-    func appendBinDeps(binDeps: HashMap<String, BinDeps>): Unit {
-        for ((_, eachModuleDepMap) in binDeps) {
-            for (depName in eachModuleDepMap.packageRequiresSort) {
-                if (!requires.contains(depName)) {
-                    continue
-                }
-                let info = eachModuleDepMap.packageRequires[depName]
-                if (info.isMacroPackage) {
-                    continue
-                }
-                binOptions.add(all: linkPackage(info.libName, info.libPath, isLto), at: 0)
+    for ((_, eachModuleDepMap) in binDeps) {
+        for (depName in eachModuleDepMap.packageRequiresSort) {
+            if (!requires.contains(depName)) {
+                continue
             }
+            let info = eachModuleDepMap.packageRequires[depName]
+            if (info.isMacroPackage) {
+                continue
+            }
+            binOptions.add(all: linkPackage(info.libName, info.libPath, isLto), at: 0)
         }
     }
-
-    appendBinDeps(res.binDeps)
-    appendBinDeps(res.crossBinDeps)
     return binOptions
 }
 
@@ -563,7 +558,8 @@ func getLinkList(res: ModuleResolve, fullName: String, requires: HashSet<String>
     let cLibNameList = HashSet<String>()
     let validCommand = ArrayList<String>()
 
-    validCommand.add(all: appendBinOptionForTest(res, requires, testConfig.isLto))
+    let binDeps = selectBinDepMap(testConfig.isCrossCompile, res.binDeps, res.crossBinDeps)
+    validCommand.add(all: appendBinOptionForTest(binDeps, requires, testConfig.isLto))
 
     for (r in res.resolves) {
         if (!requires.contains(r.fullName) && r.fullName != fullName) {

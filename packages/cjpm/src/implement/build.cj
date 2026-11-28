@@ -50,11 +50,11 @@ public func doBuild(tomlInfo: TomlInfo, buildConfig: BuildConfig, isScriptDep!: 
     }
 
     if (buildConfig.globalConfig.isAnalysisCompilePerformance) {
-        buildConfig.globalConfig.compilePerformanceTargetDir = Path(buildConfig.globalConfig.targetDir).join(COMPILE_PERFORMANCE_DIR).toString()
-        deleteDirectory(buildConfig.globalConfig.compilePerformanceTargetDir)
-        if (!createDirectory(buildConfig.globalConfig.compilePerformanceTargetDir)) {
+        let performanceDir = Path(buildConfig.globalConfig.targetDir).join(COMPILE_PERFORMANCE_DIR).toString()
+        if (!deleteDirectory(performanceDir) || !createDirectory(performanceDir)) {
             return false
         }
+        buildConfig.globalConfig.compilePerformanceTargetDir = performanceDir
     }
 
     let (ldPath, cLibLinkMap, crossCLibLinkMap, cjPathList) = configureModuleResolveData(
@@ -130,33 +130,37 @@ func checkBuildConfiguration(tomlInfo: TomlInfo, buildConfig: BuildConfig): Bool
     return true
 }
 
-func recordCjpmBuildStartTime(tomlInfo: TomlInfo) {
-    if (tomlInfo.profile.build.analysisCompilePerformance) {
-        let cjpmCommand: String = String.join(getCommandLine(), delimiter:" ")
-        COMMAND_CACHE.add(CommandInfo("cjpm", cjpmCommand))
-        SHOW_CACHE.add(PkgInfo("cjpm", "B", DateTime.now().toUnixTimeStamp().toMilliseconds()))
-        memProcess = addMemoryProcess()
+// Both build entry points own the sampler for the duration of this invocation.
+private func buildWithPerformance(tomlInfo: TomlInfo, buildConfig: BuildConfig,
+    rootTomlDocument!: ?ModuleTomlDocument = None): Bool {
+    if (!tomlInfo.profile.build.analysisCompilePerformance) {
+        return doBuild(tomlInfo, buildConfig, rootTomlDocument: rootTomlDocument)
     }
-}
 
-func recordCjpmBuildEndTime(tomlInfo: TomlInfo, path: String) {
-    if (tomlInfo.profile.build.analysisCompilePerformance) {
-        memProcess.cancel()
-        memProcess.get()
-        var cjpmEndTime = DateTime.now().toUnixTimeStamp().toMilliseconds()
-        SHOW_CACHE.add(PkgInfo("cjpm", "E", cjpmEndTime))
-        CJPM_COMPILE_INFO.add(cjpmEndTime.toString(),getCoreCompilerMemInfo())
-        addCompileCost(path)
+    buildConfig.globalConfig.compilePerformanceTargetDir = ""
+    let cjpmCommand = String.join(getCommandLine(), delimiter: " ")
+    COMMAND_CACHE.add(CommandInfo("cjpm", cjpmCommand))
+    SHOW_CACHE.add(PkgInfo("cjpm", "B", DateTime.now().toUnixTimeStamp().toMilliseconds()))
+    let sampler = addMemoryProcess()
+    try {
+        return doBuild(tomlInfo, buildConfig, rootTomlDocument: rootTomlDocument)
+    } finally {
+        sampler.cancel()
+        sampler.get()
+        let path = buildConfig.globalConfig.compilePerformanceTargetDir
+        if (!path.isEmpty()) {
+            let endTime = DateTime.now().toUnixTimeStamp().toMilliseconds()
+            SHOW_CACHE.add(PkgInfo("cjpm", "E", endTime))
+            CJPM_COMPILE_INFO.add(endTime.toString(), getCoreCompilerMemInfo())
+            addCompileCost(path)
+        }
     }
 }
 
 // Command build implement.
 public func doBuild(buildConfig: BuildConfig): Bool {
     let tomlInfo: TomlInfo = loadModuleFile(buildConfig.globalConfig.rootPath) ?? return false
-    recordCjpmBuildStartTime(tomlInfo)
-    let buildRes = doBuild(tomlInfo, buildConfig, isScriptDep: false)
-    recordCjpmBuildEndTime(tomlInfo, buildConfig.globalConfig.compilePerformanceTargetDir)
-    return buildRes
+    return buildWithPerformance(tomlInfo, buildConfig)
 }
 
 // Build command entry point. Parse once; dependency resolution creates its own mutable config from the document.
@@ -169,9 +173,7 @@ public func doTopLevelBuild(buildConfig: BuildConfig): Bool {
     let document = loadModuleDocument(buildConfig.globalConfig.rootPath) ?? return false
     let tomlInfo = document.toTomlInfo() ?? return false
     state.setExperimental(tomlInfo.profile.isExperimental)
-    recordCjpmBuildStartTime(tomlInfo)
-    let buildRes = doBuild(tomlInfo, buildConfig, isScriptDep: false, rootTomlDocument: document)
-    recordCjpmBuildEndTime(tomlInfo, buildConfig.globalConfig.compilePerformanceTargetDir)
+    let buildRes = buildWithPerformance(tomlInfo, buildConfig, rootTomlDocument: document)
     if (buildRes && !buildConfig.exportCompileCommands.isEmpty()) {
         let keys = buildConfig.compileCommands.keys().toArray()
         sort(keys)
@@ -668,6 +670,17 @@ func getTypeCommand(compileTask: CompileTask): ArrayList<String> {
     return res
 }
 
+// A host macro stays on the host even during a cross build. An empty selected table
+// is authoritative: libraries for the other platform cannot be used as a fallback.
+func selectBinDepMap(isCrossCompile: Bool, host: HashMap<String, BinDeps>,
+    target: HashMap<String, BinDeps>): HashMap<String, BinDeps> {
+    if (isCrossCompile) { target } else { host }
+}
+
+func selectBinDepMap(compileTask: CompileTask, buildConfig: BuildConfig): HashMap<String, BinDeps> {
+    selectBinDepMap(compileTask.isCrossCompile, buildConfig.binDepMap, buildConfig.crossBinDepMap)
+}
+
 func getBuildArgs(compileTask: CompileTask, buildConfig: BuildConfig): ArrayList<String> {
     let res = ArrayList<String>()
     // Record dependent root packages
@@ -729,19 +742,15 @@ func getBuildArgs(compileTask: CompileTask, buildConfig: BuildConfig): ArrayList
     }
 
     res.add(all: allOptions)
-    let (libPathOptions, binStdDeps) = getLinkOptionForBindep(buildConfig.binDepMap, linkSort, compileTask)
-    let (crosslibPathOptions, crossbinStdDeps) = getLinkOptionForBindep(buildConfig.crossBinDepMap, linkSort, compileTask)
-    let binOptions = ArrayList<String>()
-    binOptions.add(all: libPathOptions, at: 0)
-    binOptions.add(all: crosslibPathOptions, at: 0)
-    res.add(all: binOptions)
+    let (libPathOptions, binStdDeps) = getLinkOptionForBindep(selectBinDepMap(compileTask, buildConfig),
+        linkSort, compileTask)
+    res.add(all: libPathOptions)
     if (!isIosModuleLtoCombineRootCompileTask(compileTask)) {
         res.add(all: getMinimizedCLibLinkStr(getCLibLinkMap(compileTask, buildConfig), cLibNameList))
     }
 
     if (isLinkTask) {
         stdDeps.add(all: binStdDeps)
-        stdDeps.add(all: crossbinStdDeps)
         res.add(all: topoSort(stdDeps).iterator().map { std: String => "-lcangjie-std-${std.removePrefix("std.")}" } |> collectArray)
     }
 
@@ -789,8 +798,8 @@ func getForcedLibArgs(compileTask: CompileTask, buildConfig: BuildConfig): Array
     // So we should remove it from `binDepSet` because we only need link it once.
     binDepSet.remove(all: linkSort)
     if (isIosModuleLtoCombineRootCompileTask(compileTask)) {
-        allOptions.add(all: appendOptionForBindep(buildConfig.binDepMap, binDepSet, compileTask), at: 0)
-        allOptions.add(all: appendOptionForBindep(buildConfig.crossBinDepMap, binDepSet, compileTask), at: 0)
+        allOptions.add(all: appendOptionForBindep(selectBinDepMap(compileTask, buildConfig), binDepSet, compileTask),
+            at: 0)
         addForcedLibArgs(res, allOptions, compileTask.target)
         return res
     }
@@ -820,17 +829,11 @@ func getForcedBinDep(compileTask: CompileTask, buildConfig: BuildConfig, binDepS
 
 func getForcedBinDepForLinuxOrWin(compileTask: CompileTask, buildConfig: BuildConfig,
     binDepSet: HashSet<String>): ArrayList<String> {
-    var binOptions = ArrayList<String>()
-    binOptions.add(all: appendOptionForBindep(buildConfig.binDepMap, binDepSet, compileTask), at: 0)
-    binOptions.add(all: appendOptionForBindep(buildConfig.crossBinDepMap, binDepSet, compileTask), at: 0)
-    return binOptions
+    return appendOptionForBindep(selectBinDepMap(compileTask, buildConfig), binDepSet, compileTask)
 }
 
 func getForcedBinDepForMac(compileTask: CompileTask, buildConfig: BuildConfig, binDepSet: HashSet<String>): ArrayList<String> {
-    var binOptions = ArrayList<String>()
-    binOptions.add(all: getForcedBinDepPath(buildConfig.binDepMap, binDepSet, compileTask), at: 0)
-    binOptions.add(all: getForcedBinDepPath(buildConfig.crossBinDepMap, binDepSet, compileTask), at: 0)
-    return binOptions
+    return getForcedBinDepPath(selectBinDepMap(compileTask, buildConfig), binDepSet, compileTask)
 }
 
 func getForcedBinDepPath(binDepMap: HashMap<String, BinDeps>, binDepSet: HashSet<String>,

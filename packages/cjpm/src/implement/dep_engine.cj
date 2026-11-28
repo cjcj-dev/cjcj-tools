@@ -503,12 +503,7 @@ public class DepAnalysisEngine {
             )
         }
 
-        var downloadFlag = true
-        for (task in downloadTasks) {
-            downloadFlag &&= task.get()
-        }
-
-        return downloadFlag
+        return waitForRegistryDownloads(downloadTasks)
     }
 
     func checkRegistryLock(name: String, version: String): Bool {
@@ -868,4 +863,21 @@ public class DepAnalysisState {
             this.unfixedQueue.add(name)
         }
     }
+}
+
+
+// A failed task must not let resolution return while another download is still running.
+func waitForRegistryDownloads(tasks: ArrayList<Future<Bool>>): Bool {
+    var succeeded = true
+    for (task in tasks) {
+        try {
+            if (!task.get()) {
+                succeeded = false
+            }
+        } catch (e: Exception) {
+            eprintln("Error: ${e.message}")
+            succeeded = false
+        }
+    }
+    return succeeded
 }

@@ -30,7 +30,7 @@ if(privateSdk!==null){
 assert(!fs.existsSync(out)||fs.readdirSync(out).length===0,'use a new empty output directory');
 fs.mkdirSync(out, {recursive:true});
 const commands=[], checks=[], failures=[],completed=[];
-const knownCases=['skip-build','preserved-mtime','compiler-launch','dummy-failure','empty-runner-failure','scan-import','scan-production-test','scan-test-inputs','scan-source-set','legacy-scan-cache','dummy-generation','scan-test-macro'];
+const knownCases=['skip-build','preserved-mtime','compiler-launch','dummy-failure','empty-runner-failure','scan-import','scan-production-test','scan-test-inputs','test-source-fingerprint','scan-source-set','legacy-scan-cache','dummy-generation','scan-test-macro'];
 const selected=process.env.CJPM_REGRESSION_CASES?.split(',')??knownCases;
 assert(selected.length>0&&selected.every(name=>knownCases.includes(name)),'unknown or empty regression filter');
 const assertExit=(p,rc)=>{assert.equal(p.error,undefined);assert.equal(p.signal,null);assert(Number.isInteger(p.status));assert.equal(p.status,rc);};
@@ -274,6 +274,28 @@ testcase('scan-test-inputs',()=>{
   ok(mode+'-test-inputs-restored',p,['test','-i','-j','2']);
   check(mode+'-test-inputs-restored-body',()=>assert.equal(fs.readFileSync(p+'/observed','utf8'),'7'));
  }
+});
+testcase('test-source-fingerprint',()=>{
+ // Same files, imports, sizes, and nanosecond mtimes. Only test bodies change.
+ // Keep mixed and test-only packages separate so both paths need the fingerprint.
+ const observed=[];
+ for(const [kind,dir] of [['mixed',''],['pure','pure/']]){
+  const src=dir+'value_test.cj',packageName=dir?'cachecase.pure':'cachecase';
+  const testText=word=>body(word).replace('package cachecase','package '+packageName)
+   .replace('@Expect(value(), 7); ', '');
+  const p=project('fingerprint-'+kind,{
+   'lib.cj':production,[src]:testText('OLD'),'control/lib.cj':control,'control/lib_test.cj':controlTest
+  });
+  const controlPath=p+'/target/release/unittest_bin/cachecase.control';
+  ok('fingerprint-'+kind+'-prime',p,testArgs);
+  check('fingerprint-'+kind+'-prime-observed',()=>assert.equal(fs.readFileSync(p+'/observed','utf8'),'OLD'));
+  const before=snapshot(controlPath);
+  replacePreservingTime(p+'/src/'+src,testText('NEW'));
+  ok('fingerprint-'+kind+'-edited',p,testArgs);
+  check('fingerprint-'+kind+'-control-reused',()=>assert.deepEqual(snapshot(controlPath),before));
+  observed.push(fs.readFileSync(p+'/observed','utf8'));
+ }
+ check('test-source-body-changes-are-consumed',()=>assert.deepEqual(observed,['NEW','NEW']));
 });
 testcase('scan-source-set',()=>{
  const p=project('source-set',{'lib.cj':production,'control/lib.cj':control,'control/lib_test.cj':controlTest});
